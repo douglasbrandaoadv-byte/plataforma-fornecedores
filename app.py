@@ -12,7 +12,7 @@ import requests
 # CONFIGURAÇÃO DO ADMINISTRADOR (ATENÇÃO AQUI)
 # ==========================================
 # Digite o seu CPF (com o zero inicial, apenas os números) entre as aspas abaixo:
-CPF_DO_ADMINISTRADOR = "06698038474" 
+CPF_DO_ADMINISTRADOR = "01234567890" 
 
 st.set_page_config(page_title="Busca de Fornecedores", page_icon="🏢", layout="wide")
 
@@ -33,6 +33,7 @@ def conectar_planilha():
 planilha = conectar_planilha()
 aba_usuarios = planilha.worksheet("Usuarios")
 aba_fornecedores = planilha.worksheet("Fornecedores")
+aba_sugestoes = planilha.worksheet("Sugestoes") # Nova aba conectada!
 
 # ==========================================
 # 2. FUNÇÕES DE APOIO
@@ -139,7 +140,6 @@ if not st.session_state['logado']:
                         if str(row['codigo_verificacao']) == codigo_digitado:
                             aba_usuarios.update_cell(i + 2, 14, 1) 
                             
-                            # LOGA O USUÁRIO AUTOMATICAMENTE E REDIRECIONA
                             st.session_state['logado'] = True
                             st.session_state['cpf_atual'] = st.session_state['validando_email']
                             del st.session_state['validando_email']
@@ -243,8 +243,9 @@ else:
         st.session_state['cpf_atual'] = ""
         st.rerun()
 
-    opcoes_menu = ["Buscar", "Adicionar Novo"]
+    opcoes_menu = ["Buscar", "Sugerir Contato de Prestador/Fornecedor"]
     if st.session_state.get('cpf_atual') == limpar_cpf(CPF_DO_ADMINISTRADOR):
+        opcoes_menu.append("Aprovar Sugestões")
         opcoes_menu.append("Administrar Prioridades")
 
     menu_interno = st.radio("Menu Principal", opcoes_menu, horizontal=True)
@@ -291,33 +292,85 @@ else:
             else:
                 st.warning("Nenhum fornecedor cadastrado na base de dados.")
 
-    elif menu_interno == "Adicionar Novo":
-        st.write("Insira os dados do novo profissional. Se ele tiver apenas um ramo ou contato, deixe os outros em branco.")
-        with st.form("form_f"):
-            nome_f = st.text_input("Nome *")
+    # Nova Interface para o usuário final enviar Sugestões
+    elif menu_interno == "Sugerir Contato de Prestador/Fornecedor":
+        st.write("Conhece um bom profissional? Sugira abaixo. A administração da plataforma avaliará os dados antes de disponibilizá-los nas buscas.")
+        
+        with st.form("form_sugestao"):
+            nome_f = st.text_input("Nome do Prestador/Fornecedor *")
             col_t1, col_t2 = st.columns(2)
-            tel1_f = col_t1.text_input("Contato 1 *")
-            tel2_f = col_t2.text_input("Contato 2")
+            tel1_f = col_t1.text_input("Contato Telefônico 1 *")
+            tel2_f = col_t2.text_input("Contato Telefônico 2")
             email_f = st.text_input("E-mail")
             
-            col_r1, col_r2, col_r3 = st.columns(3)
-            ramo1_f = col_r1.text_input("Ramo 1 *")
-            ramo2_f = col_r2.text_input("Ramo 2")
-            ramo3_f = col_r3.text_input("Ramo 3")
+            st.info("📋 **Instrução Obrigatória:** No campo abaixo, descreva detalhadamente quais as atividades, serviços ou produtos com os quais este prestador ou fornecedor trabalha. Seja específico para facilitar a avaliação.")
+            descricao_f = st.text_area("Descreva as atividades ou produtos *")
             
-            col_r4, col_r5 = st.columns(2)
-            ramo4_f = col_r4.text_input("Ramo 4")
-            ramo5_f = col_r5.text_input("Ramo 5")
-
-            if st.form_submit_button("Cadastrar na Planilha"):
-                if not nome_f or not ramo1_f or not tel1_f:
-                    st.error("Nome, Ramo 1 e Contato 1 são obrigatórios.")
+            if st.form_submit_button("Enviar"):
+                if not nome_f or not tel1_f or not descricao_f:
+                    st.error("Nome, Contato 1 e a Descrição das atividades são obrigatórios.")
                 else:
-                    aba_fornecedores.append_row([
-                        nome_f, tel1_f, tel2_f, email_f, 
-                        ramo1_f, ramo2_f, ramo3_f, ramo4_f, ramo5_f, 0
-                    ])
-                    st.success("Fornecedor cadastrado com sucesso direto na sua planilha!")
+                    aba_sugestoes.append_row([nome_f, tel1_f, tel2_f, email_f, descricao_f, "Pendente"])
+                    st.success("✅ Sugestão enviada com sucesso! Ela foi encaminhada para análise da administração.")
+
+    # Nova Interface exclusiva para você analisar e aprovar as Sugestões
+    elif menu_interno == "Aprovar Sugestões":
+        st.subheader("Sugestões Pendentes de Aprovação")
+        st.write("Avalie as indicações, edite os dados conforme necessário e distribua a descrição enviada pelo usuário nos campos de 'Ramo' para manter a base padronizada.")
+        
+        df_sugestoes = pd.DataFrame(aba_sugestoes.get_all_records())
+        if not df_sugestoes.empty:
+            pendentes = df_sugestoes[df_sugestoes['status'] == 'Pendente']
+            
+            if pendentes.empty:
+                st.success("Não há novas sugestões pendentes de aprovação no momento.")
+            else:
+                for i, row in pendentes.iterrows():
+                    with st.expander(f"Sugestão recebida: {row.get('nome', 'Sem nome')} - CLIQUE AQUI PARA AVALIAR", expanded=True):
+                        st.markdown("**Descrição original escrita pelo usuário:**")
+                        st.info(row.get('descricao', 'Sem descrição'))
+                        
+                        with st.form(f"form_aprovar_{i}"):
+                            edit_nome = st.text_input("Nome", value=str(row.get('nome', '')))
+                            col_a, col_b = st.columns(2)
+                            edit_t1 = col_a.text_input("Contato 1", value=str(row.get('contato_1', '')))
+                            edit_t2 = col_b.text_input("Contato 2", value=str(row.get('contato_2', '')))
+                            edit_email = st.text_input("E-mail", value=str(row.get('email', '')))
+                            
+                            st.write("**Distribua a descrição acima nos Ramos oficiais da plataforma:**")
+                            c1, c2, c3 = st.columns(3)
+                            edit_r1 = c1.text_input("Ramo 1 *")
+                            edit_r2 = c2.text_input("Ramo 2")
+                            edit_r3 = c3.text_input("Ramo 3")
+                            
+                            c4, c5 = st.columns(2)
+                            edit_r4 = c4.text_input("Ramo 4")
+                            edit_r5 = c5.text_input("Ramo 5")
+                            
+                            col_btn1, col_btn2 = st.columns(2)
+                            btn_aprovar = col_btn1.form_submit_button("✅ Aprovar e Cadastrar", type="primary")
+                            btn_rejeitar = col_btn2.form_submit_button("❌ Rejeitar Sugestão")
+                            
+                            if btn_aprovar:
+                                if not edit_nome or not edit_t1 or not edit_r1:
+                                    st.error("Para aprovar, o Nome, Contato 1 e pelo menos o Ramo 1 devem estar preenchidos.")
+                                else:
+                                    # Salva na base oficial de Fornecedores
+                                    aba_fornecedores.append_row([
+                                        edit_nome, edit_t1, edit_t2, edit_email, 
+                                        edit_r1, edit_r2, edit_r3, edit_r4, edit_r5, 0
+                                    ])
+                                    # Muda o status da sugestão para não aparecer mais aqui
+                                    aba_sugestoes.update_cell(i + 2, 6, "Aprovado")
+                                    st.success(f"O fornecedor {edit_nome} foi aprovado e agora está disponível nas buscas!")
+                                    st.rerun()
+                                    
+                            if btn_rejeitar:
+                                aba_sugestoes.update_cell(i + 2, 6, "Rejeitado")
+                                st.warning("Sugestão descartada.")
+                                st.rerun()
+        else:
+            st.success("Não há registros de sugestões na planilha.")
 
     elif menu_interno == "Administrar Prioridades":
         st.write("Coloque o valor '1' para destacar a empresa no topo, e '0' para posição normal.")
