@@ -12,7 +12,7 @@ import requests
 # CONFIGURAÇÃO DO ADMINISTRADOR (ATENÇÃO AQUI)
 # ==========================================
 # Digite o seu CPF (com o zero inicial, apenas os números) entre as aspas abaixo:
-CPF_DO_ADMINISTRADOR = "06698038474" 
+CPF_DO_ADMINISTRADOR = "01234567890" 
 
 st.set_page_config(page_title="Busca de Fornecedores", page_icon="🏢", layout="wide")
 
