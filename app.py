@@ -6,13 +6,14 @@ import smtplib
 from email.mime.text import MIMEText
 import re
 import json
+import requests
 
 st.set_page_config(page_title="Busca de Fornecedores", page_icon="🏢", layout="wide")
 
 # ==========================================
 # 1. CONEXÃO COM A PLANILHA DO GOOGLE
 # ==========================================
-@st.cache_resource(ttl=600) # Atualiza o cache de 10 em 10 minutos para não pesar
+@st.cache_resource(ttl=600)
 def conectar_planilha():
     try:
         credenciais_json = json.loads(st.secrets["google_credentials"])
@@ -28,7 +29,7 @@ aba_usuarios = planilha.worksheet("Usuarios")
 aba_fornecedores = planilha.worksheet("Fornecedores")
 
 # ==========================================
-# 2. FUNÇÕES DE APOIO
+# 2. FUNÇÕES DE APOIO (CEP, IBGE e Tratamentos)
 # ==========================================
 def validar_senha(senha):
     if len(senha) < 8: return False
@@ -37,9 +38,39 @@ def validar_senha(senha):
     if not re.search(r"[0-9]", senha): return False
     return True
 
+# Correção 3: Tratamento para não perder o zero do CPF
+def limpar_cpf(cpf):
+    cpf_str = str(cpf).replace('.0', '') # Remove decimais caso o pandas leia como float
+    cpf_num = re.sub(r'[^0-9]', '', cpf_str) # Deixa só números
+    return cpf_num.zfill(11) # Força a ter 11 dígitos, adicionando zeros à esquerda
+
+@st.cache_data
+def carregar_cidades():
+    # Correção 2: Puxa todas as cidades do Brasil via IBGE
+    try:
+        res = requests.get("https://servicodados.ibge.gov.br/api/v1/localidades/municipios")
+        if res.status_code == 200:
+            cidades = sorted([f"{m['nome']} - {m['microrregiao']['mesorregiao']['UF']['sigla']}" for m in res.json()])
+            cidades.insert(0, "") # Adiciona opção em branco no topo
+            return cidades
+    except:
+        pass
+    return [""]
+
+def buscar_cep(cep):
+    # Correção 1: Busca o endereço via ViaCEP
+    cep_limpo = re.sub(r'[^0-9]', '', str(cep))
+    if len(cep_limpo) == 8:
+        try:
+            res = requests.get(f"https://viacep.com.br/ws/{cep_limpo}/json/")
+            if res.status_code == 200:
+                return res.json()
+        except: pass
+    return {}
+
 def enviar_email(destinatario, codigo):
-    remetente = "SEU_EMAIL_AQUI@gmail.com" # Substituir depois
-    senha_app = "SUA_SENHA_DE_APP_AQUI" # Substituir depois
+    remetente = "SEU_EMAIL_AQUI@gmail.com" 
+    senha_app = "SUA_SENHA_DE_APP_AQUI" 
     msg = MIMEText(f"Seu código de verificação é: {codigo}")
     msg['Subject'] = 'Código de Verificação - Plataforma'
     msg['From'] = remetente
@@ -58,40 +89,53 @@ def enviar_email(destinatario, codigo):
 if 'logado' not in st.session_state:
     st.session_state['logado'] = False
 
+# Correção 4: Uso do Session State para permitir redirecionamento do menu
+if 'menu_login' not in st.session_state:
+    st.session_state['menu_login'] = "Entrar"
+
 if not st.session_state['logado']:
     st.title("🏢 Plataforma de Fornecedores")
-    aba1, aba2 = st.tabs(["Entrar", "Cadastrar Novo Usuário"])
     
-    with aba1:
+    # Substituímos as Tabs por botões de rádio para conseguirmos mudar a tela via código
+    menu = st.radio("Selecione uma opção:", ["Entrar", "Cadastrar Novo Usuário"], key="menu_login", horizontal=True)
+    
+    if menu == "Entrar":
         st.subheader("Acesse sua conta")
         login_cpf = st.text_input("CPF")
         login_senha = st.text_input("Senha", type="password")
         
-        if st.button("Entrar"):
+        if st.button("Fazer Login"):
             dados_users = aba_usuarios.get_all_records()
             df_users = pd.DataFrame(dados_users)
             
-            if not df_users.empty and login_cpf in df_users['cpf'].astype(str).values:
-                usuario_encontrado = df_users[df_users['cpf'].astype(str) == login_cpf].iloc[0]
+            if not df_users.empty:
+                # Trata todos os CPFs da base para garantir que os zeros estejam lá
+                df_users['cpf_tratado'] = df_users['cpf'].apply(limpar_cpf)
+                cpf_digitado_tratado = limpar_cpf(login_cpf)
                 
-                if str(usuario_encontrado['senha']) == login_senha:
-                    if int(usuario_encontrado['verificado']) == 1:
-                        st.session_state['logado'] = True
-                        st.rerun()
+                if cpf_digitado_tratado in df_users['cpf_tratado'].values:
+                    usuario_encontrado = df_users[df_users['cpf_tratado'] == cpf_digitado_tratado].iloc[0]
+                    
+                    if str(usuario_encontrado['senha']) == login_senha:
+                        if int(usuario_encontrado['verificado']) == 1:
+                            st.session_state['logado'] = True
+                            st.rerun()
+                        else:
+                            st.session_state['validando_email'] = cpf_digitado_tratado
+                            st.warning("Primeiro acesso detectado! Verifique seu e-mail.")
                     else:
-                        st.session_state['validando_email'] = login_cpf
-                        st.warning("Primeiro acesso detectado! Verifique seu e-mail.")
+                        st.error("Senha incorreta.")
                 else:
-                    st.error("Senha incorreta.")
+                    st.error("CPF não encontrado.")
             else:
-                st.error("CPF não encontrado.")
+                st.error("Nenhum usuário cadastrado.")
 
         if 'validando_email' in st.session_state:
             codigo_digitado = st.text_input("Digite o código de 6 dígitos:")
             if st.button("Validar Código"):
                 dados_users = aba_usuarios.get_all_records()
                 for i, row in enumerate(dados_users):
-                    if str(row['cpf']) == st.session_state['validando_email']:
+                    if limpar_cpf(row['cpf']) == st.session_state['validando_email']:
                         if str(row['codigo_verificacao']) == codigo_digitado:
                             aba_usuarios.update_cell(i + 2, 13, 1) 
                             st.success("Verificado com sucesso! Faça login novamente.")
@@ -100,53 +144,94 @@ if not st.session_state['logado']:
                         else:
                             st.error("Código incorreto.")
 
-    with aba2:
+    elif menu == "Cadastrar Novo Usuário":
         st.subheader("Cadastro")
-        with st.form("form_cadastro"):
-            col1, col2 = st.columns(2)
-            nome = col1.text_input("Nome Completo *")
-            cpf = col2.text_input("CPF *")
-            email = col1.text_input("E-mail *")
+        
+        col1, col2 = st.columns(2)
+        nome = col1.text_input("Nome Completo *")
+        cpf_cadastro = col2.text_input("CPF *")
+        email = col1.text_input("E-mail *")
+        
+        st.write("### Endereço")
+        # Campo de CEP aciona a busca automaticamente ao digitar os 8 números e clicar fora
+        cep = st.text_input("CEP (Digite apenas os números e clique fora da caixa)")
+        
+        rua_val, bairro_val, cidade_val = "", "", ""
+        if cep and len(re.sub(r'[^0-9]', '', cep)) == 8:
+            dados_cep = buscar_cep(cep)
+            if dados_cep and "erro" not in dados_cep:
+                rua_val = dados_cep.get("logradouro", "")
+                bairro_val = dados_cep.get("bairro", "")
+                cidade_val = f"{dados_cep.get('localidade', '')} - {dados_cep.get('uf', '')}"
+                st.success("CEP encontrado!")
+            else:
+                st.error("CEP não localizado.")
+
+        col3, col4 = st.columns([3, 1])
+        rua = col3.text_input("Rua *", value=rua_val)
+        numero = col4.text_input("Número *")
+        bairro = col3.text_input("Bairro *", value=bairro_val)
+        
+        # Puxa lista de cidades do IBGE
+        lista_cidades = carregar_cidades()
+        idx_cidade = 0
+        if cidade_val in lista_cidades:
+            idx_cidade = lista_cidades.index(cidade_val)
             
-            st.write("Endereço")
-            col3, col4, col5 = st.columns(3)
-            cep = col3.text_input("CEP (Opcional)")
-            rua = col4.text_input("Rua *")
-            numero = col5.text_input("Número *")
-            bairro = col3.text_input("Bairro *")
-            cidade = col4.text_input("Cidade *")
+        cidade = st.selectbox("Cidade * (Comece a digitar para pesquisar)", options=lista_cidades, index=idx_cidade)
+        
+        st.write("### Informações Profissionais")
+        perfil = st.selectbox("Qual o seu perfil? *", [
+            "1 - Síndico Orgânico", "2 - Síndico Profissional", "3 - Gerente de Condomínio",
+            "4 - Funcionário de Condomínio", "5 - Morador de um condomínio", 
+            "6 - Sem vinculação"
+        ])
+        
+        condominios = ""
+        if perfil != "6 - Sem vinculação":
+            condominios = st.text_area("Nome do(s) condomínio(s) (Obrigatório para seu perfil):")
+        
+        senha = st.text_input("Crie uma Senha * (Mín. 8 char, 1 Maiúscula, 1 Minúscula, 1 Número)", type="password")
+        termo = st.checkbox("Declaro me responsabilizar pelas informações cadastradas (Minhas e de Terceiros). *")
+        
+        if st.button("Concluir Cadastro"):
+            df_users = pd.DataFrame(aba_usuarios.get_all_records())
             
-            perfil = st.selectbox("Qual o seu perfil? *", [
-                "1 - Síndico Orgânico", "2 - Síndico Profissional", "3 - Gerente de Condomínio",
-                "4 - Funcionário de Condomínio", "5 - Morador de um condomínio", 
-                "6 - Sem vinculação"
-            ])
-            
-            condominios = ""
-            if perfil != "6 - Sem vinculação":
-                condominios = st.text_area("Nome do(s) condomínio(s) (Obrigatório para seu perfil):")
-            
-            senha = st.text_input("Crie uma Senha * (Mín. 8 char, 1 Maiúscula, 1 Minúscula, 1 Número)", type="password")
-            termo = st.checkbox("Declaro me responsabilizar pelas informações cadastradas (Minhas e de Terceiros). *")
-            
-            if st.form_submit_button("Concluir Cadastro"):
-                df_users = pd.DataFrame(aba_usuarios.get_all_records())
+            if not df_users.empty:
+                df_users['cpf_tratado'] = df_users['cpf'].apply(limpar_cpf)
+                cpfs_cadastrados = df_users['cpf_tratado'].values
+            else:
+                cpfs_cadastrados = []
                 
-                if not nome or not cpf or not email or not rua or not numero or not bairro or not cidade:
-                    st.error("Preencha todos os campos obrigatórios (*).")
-                elif not df_users.empty and cpf in df_users['cpf'].astype(str).values:
-                    st.error("CPF já cadastrado.")
-                elif perfil != "6 - Sem vinculação" and not condominios:
-                    st.error("Preencha o nome do condomínio.")
-                elif not validar_senha(senha):
-                    st.error("Senha fraca.")
-                elif not termo:
-                    st.error("Aceite os termos.")
-                else:
-                    codigo = str(random.randint(100000, 999999))
-                    aba_usuarios.append_row([cpf, nome, email, cep, rua, numero, bairro, cidade, perfil, condominios, senha, codigo, 0])
-                    enviar_email(email, codigo)
-                    st.success("Cadastro realizado! Código enviado ao seu e-mail.")
+            cpf_limpo_cadastro = limpar_cpf(cpf_cadastro)
+
+            if not nome or not cpf_cadastro or not email or not rua or not numero or not bairro or not cidade:
+                st.error("Preencha todos os campos obrigatórios (*).")
+            elif cpf_limpo_cadastro in cpfs_cadastrados:
+                st.error("Este CPF já está cadastrado.")
+            elif perfil != "6 - Sem vinculação" and not condominios:
+                st.error("Preencha o nome do condomínio.")
+            elif not validar_senha(senha):
+                st.error("A senha deve ter no mínimo 8 caracteres, contendo letra maiúscula, minúscula e número.")
+            elif not termo:
+                st.error("Você precisa aceitar os termos de responsabilidade.")
+            else:
+                codigo = str(random.randint(100000, 999999))
+                # Salvamos o CPF limpo no banco (com os zeros à esquerda preservados como texto)
+                aba_usuarios.append_row([
+                    f"'{cpf_limpo_cadastro}", nome, email, cep, rua, numero, bairro, cidade, 
+                    perfil, condominios, senha, codigo, 0
+                ])
+                enviar_email(email, codigo)
+                st.session_state['sucesso_cadastro'] = True
+                
+        # Correção 4: Redirecionamento após cadastro
+        if st.session_state.get('sucesso_cadastro'):
+            st.success("✅ Cadastro realizado com sucesso! O código de 6 dígitos foi enviado ao seu e-mail para o primeiro acesso.")
+            if st.button("Ir para a Tela de Acesso (Login)"):
+                st.session_state['sucesso_cadastro'] = False
+                st.session_state['menu_login'] = "Entrar"
+                st.rerun()
 
 # ==========================================
 # 4. PLATAFORMA PRINCIPAL (Após Login)
@@ -160,26 +245,21 @@ else:
         st.session_state['logado'] = False
         st.rerun()
 
-    menu = st.radio("Menu", ["Buscar", "Adicionar Novo", "Administrar Prioridades"], horizontal=True)
+    menu_interno = st.radio("Menu Principal", ["Buscar", "Adicionar Novo", "Administrar Prioridades"], horizontal=True)
 
-    if menu == "Buscar":
+    if menu_interno == "Buscar":
         termo = st.text_input("Buscar por Nome ou Ramo de Atuação:")
         if st.button("Pesquisar"):
             df_forn = pd.DataFrame(aba_fornecedores.get_all_records())
             if not df_forn.empty:
-                # Transforma espaços vazios para não dar erro na busca
                 df_forn = df_forn.fillna("")
-                
-                # Junta todos os ramos em um texto só (invisível) para o sistema pesquisar de uma vez
                 df_forn['Todos_Ramos'] = df_forn['RAMO 1'].astype(str) + " " + df_forn['RAMO 2'].astype(str) + " " + df_forn['RAMO 3'].astype(str) + " " + df_forn['RAMO 4'].astype(str) + " " + df_forn['RAMO 5'].astype(str)
                 
-                # Procura o termo no Nome ou na junção de todos os ramos
                 filtro = df_forn[
                     df_forn['NOME'].astype(str).str.contains(termo, case=False, na=False) | 
                     df_forn['Todos_Ramos'].str.contains(termo, case=False, na=False)
                 ]
                 
-                # Se faltar a coluna prioridade por algum motivo, ele cria uma zerada temporária
                 if 'PRIORIDADE' not in filtro.columns:
                     filtro['PRIORIDADE'] = 0
                 else:
@@ -187,16 +267,13 @@ else:
                 
                 filtro = filtro.sort_values(by=['PRIORIDADE', 'NOME'], ascending=[False, True])
                 
-                # Mostra os resultados bonitos na tela
                 for _, row in filtro.iterrows():
-                    # Coleta os ramos que não estão vazios
                     ramos_lista = []
                     for i in range(1, 6):
                         col_ramo = f"RAMO {i}"
                         if col_ramo in row and str(row[col_ramo]).strip() != "":
                             ramos_lista.append(str(row[col_ramo]).strip())
                     
-                    # Coleta os contatos que não estão vazios
                     contatos_lista = []
                     if 'CONTATO 1' in row and str(row['CONTATO 1']).strip() != "":
                         contatos_lista.append(str(row['CONTATO 1']).strip())
@@ -212,7 +289,7 @@ else:
             else:
                 st.warning("Nenhum fornecedor cadastrado na base de dados.")
 
-    elif menu == "Adicionar Novo":
+    elif menu_interno == "Adicionar Novo":
         st.write("Insira os dados do novo profissional. Se ele tiver apenas um ramo ou contato, deixe os outros em branco.")
         with st.form("form_f"):
             nome_f = st.text_input("Nome *")
@@ -240,16 +317,15 @@ else:
                     ])
                     st.success("Fornecedor cadastrado com sucesso direto na sua planilha!")
 
-    elif menu == "Administrar Prioridades":
+    elif menu_interno == "Administrar Prioridades":
         st.write("Coloque o valor '1' para destacar a empresa no topo, e '0' para posição normal.")
         df_forn = pd.DataFrame(aba_fornecedores.get_all_records())
         if not df_forn.empty:
-            # Descobre em qual coluna o gspread deve salvar a Prioridade (A=1, B=2... J=10)
             col_nomes = aba_fornecedores.row_values(1)
             try:
                 indice_coluna_prio = col_nomes.index("PRIORIDADE") + 1
             except ValueError:
-                indice_coluna_prio = 10 # Padrão para a Coluna J
+                indice_coluna_prio = 10 
                 
             for i, row in df_forn.iterrows():
                 col1, col2 = st.columns([3,1])
@@ -265,7 +341,6 @@ else:
                 nova_prio = col2.selectbox("Prioridade", [0, 1], index=[0, 1].index(valor_atual), key=f"prio_{i}")
                 
                 if nova_prio != valor_atual:
-                    # i+2 porque a linha 1 é o cabeçalho, e o i (enumerate do pandas) começa em 0
                     aba_fornecedores.update_cell(i + 2, indice_coluna_prio, nova_prio)
                     st.success(f"Prioridade de {nome_display} alterada!")
                     st.rerun()
