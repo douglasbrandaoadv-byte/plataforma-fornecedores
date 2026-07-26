@@ -8,6 +8,12 @@ import re
 import json
 import requests
 
+# ==========================================
+# CONFIGURAÇÃO DO ADMINISTRADOR (ATENÇÃO AQUI)
+# ==========================================
+# Digite o seu CPF (com o zero inicial, apenas os números) entre as aspas abaixo:
+CPF_DO_ADMINISTRADOR = "01234567890" 
+
 st.set_page_config(page_title="Busca de Fornecedores", page_icon="🏢", layout="wide")
 
 # ==========================================
@@ -29,7 +35,7 @@ aba_usuarios = planilha.worksheet("Usuarios")
 aba_fornecedores = planilha.worksheet("Fornecedores")
 
 # ==========================================
-# 2. FUNÇÕES DE APOIO (CEP, IBGE e Tratamentos)
+# 2. FUNÇÕES DE APOIO
 # ==========================================
 def validar_senha(senha):
     if len(senha) < 8: return False
@@ -38,27 +44,33 @@ def validar_senha(senha):
     if not re.search(r"[0-9]", senha): return False
     return True
 
-# Correção 3: Tratamento para não perder o zero do CPF
 def limpar_cpf(cpf):
-    cpf_str = str(cpf).replace('.0', '') # Remove decimais caso o pandas leia como float
-    cpf_num = re.sub(r'[^0-9]', '', cpf_str) # Deixa só números
-    return cpf_num.zfill(11) # Força a ter 11 dígitos, adicionando zeros à esquerda
+    cpf_str = str(cpf).replace('.0', '')
+    cpf_num = re.sub(r'[^0-9]', '', cpf_str)
+    return cpf_num.zfill(11)
+
+def formatar_cpf_visual(cpf):
+    # Formata o CPF com pontos e traço para o Google Sheets não apagar o zero
+    c = limpar_cpf(cpf)
+    if len(c) == 11:
+        return f"{c[:3]}.{c[3:6]}.{c[6:9]}-{c[9:]}"
+    return c
 
 @st.cache_data
 def carregar_cidades():
-    # Correção 2: Puxa todas as cidades do Brasil via IBGE
     try:
-        res = requests.get("https://servicodados.ibge.gov.br/api/v1/localidades/municipios")
+        # Adicionado Header para o IBGE não bloquear o acesso
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        res = requests.get("https://servicodados.ibge.gov.br/api/v1/localidades/municipios", headers=headers, timeout=10)
         if res.status_code == 200:
             cidades = sorted([f"{m['nome']} - {m['microrregiao']['mesorregiao']['UF']['sigla']}" for m in res.json()])
-            cidades.insert(0, "") # Adiciona opção em branco no topo
+            cidades.insert(0, "") 
             return cidades
     except:
         pass
     return [""]
 
 def buscar_cep(cep):
-    # Correção 1: Busca o endereço via ViaCEP
     cep_limpo = re.sub(r'[^0-9]', '', str(cep))
     if len(cep_limpo) == 8:
         try:
@@ -88,15 +100,14 @@ def enviar_email(destinatario, codigo):
 # ==========================================
 if 'logado' not in st.session_state:
     st.session_state['logado'] = False
+    st.session_state['cpf_atual'] = ""
 
-# Correção 4: Uso do Session State para permitir redirecionamento do menu
 if 'menu_login' not in st.session_state:
     st.session_state['menu_login'] = "Entrar"
 
 if not st.session_state['logado']:
     st.title("🏢 Plataforma de Fornecedores")
     
-    # Substituímos as Tabs por botões de rádio para conseguirmos mudar a tela via código
     menu = st.radio("Selecione uma opção:", ["Entrar", "Cadastrar Novo Usuário"], key="menu_login", horizontal=True)
     
     if menu == "Entrar":
@@ -109,16 +120,16 @@ if not st.session_state['logado']:
             df_users = pd.DataFrame(dados_users)
             
             if not df_users.empty:
-                # Trata todos os CPFs da base para garantir que os zeros estejam lá
                 df_users['cpf_tratado'] = df_users['cpf'].apply(limpar_cpf)
                 cpf_digitado_tratado = limpar_cpf(login_cpf)
                 
-                if cpf_digitado_tratado in df_users['cpf_tratado'].values:
+                if cpf_digitado_tratado in df_users['cpf_tratado'].tolist():
                     usuario_encontrado = df_users[df_users['cpf_tratado'] == cpf_digitado_tratado].iloc[0]
                     
                     if str(usuario_encontrado['senha']) == login_senha:
                         if int(usuario_encontrado['verificado']) == 1:
                             st.session_state['logado'] = True
+                            st.session_state['cpf_atual'] = cpf_digitado_tratado
                             st.rerun()
                         else:
                             st.session_state['validando_email'] = cpf_digitado_tratado
@@ -153,7 +164,6 @@ if not st.session_state['logado']:
         email = col1.text_input("E-mail *")
         
         st.write("### Endereço")
-        # Campo de CEP aciona a busca automaticamente ao digitar os 8 números e clicar fora
         cep = st.text_input("CEP (Digite apenas os números e clique fora da caixa)")
         
         rua_val, bairro_val, cidade_val = "", "", ""
@@ -172,7 +182,6 @@ if not st.session_state['logado']:
         numero = col4.text_input("Número *")
         bairro = col3.text_input("Bairro *", value=bairro_val)
         
-        # Puxa lista de cidades do IBGE
         lista_cidades = carregar_cidades()
         idx_cidade = 0
         if cidade_val in lista_cidades:
@@ -199,11 +208,12 @@ if not st.session_state['logado']:
             
             if not df_users.empty:
                 df_users['cpf_tratado'] = df_users['cpf'].apply(limpar_cpf)
-                cpfs_cadastrados = df_users['cpf_tratado'].values
+                cpfs_cadastrados = df_users['cpf_tratado'].tolist()
             else:
                 cpfs_cadastrados = []
                 
             cpf_limpo_cadastro = limpar_cpf(cpf_cadastro)
+            cpf_para_salvar = formatar_cpf_visual(cpf_limpo_cadastro) # Salva com pontuação
 
             if not nome or not cpf_cadastro or not email or not rua or not numero or not bairro or not cidade:
                 st.error("Preencha todos os campos obrigatórios (*).")
@@ -217,15 +227,13 @@ if not st.session_state['logado']:
                 st.error("Você precisa aceitar os termos de responsabilidade.")
             else:
                 codigo = str(random.randint(100000, 999999))
-                # Salvamos o CPF limpo no banco (com os zeros à esquerda preservados como texto)
                 aba_usuarios.append_row([
-                    f"'{cpf_limpo_cadastro}", nome, email, cep, rua, numero, bairro, cidade, 
+                    cpf_para_salvar, nome, email, cep, rua, numero, bairro, cidade, 
                     perfil, condominios, senha, codigo, 0
                 ])
                 enviar_email(email, codigo)
                 st.session_state['sucesso_cadastro'] = True
                 
-        # Correção 4: Redirecionamento após cadastro
         if st.session_state.get('sucesso_cadastro'):
             st.success("✅ Cadastro realizado com sucesso! O código de 6 dígitos foi enviado ao seu e-mail para o primeiro acesso.")
             if st.button("Ir para a Tela de Acesso (Login)"):
@@ -243,9 +251,15 @@ else:
     
     if st.sidebar.button("Sair"):
         st.session_state['logado'] = False
+        st.session_state['cpf_atual'] = ""
         st.rerun()
 
-    menu_interno = st.radio("Menu Principal", ["Buscar", "Adicionar Novo", "Administrar Prioridades"], horizontal=True)
+    # Controle de acesso: Mostra "Administrar Prioridades" apenas se o CPF logado for o do Administrador
+    opcoes_menu = ["Buscar", "Adicionar Novo"]
+    if st.session_state.get('cpf_atual') == limpar_cpf(CPF_DO_ADMINISTRADOR):
+        opcoes_menu.append("Administrar Prioridades")
+
+    menu_interno = st.radio("Menu Principal", opcoes_menu, horizontal=True)
 
     if menu_interno == "Buscar":
         termo = st.text_input("Buscar por Nome ou Ramo de Atuação:")
