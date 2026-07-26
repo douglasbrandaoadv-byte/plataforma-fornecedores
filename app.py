@@ -12,7 +12,7 @@ import requests
 # CONFIGURAÇÃO DO ADMINISTRADOR (ATENÇÃO AQUI)
 # ==========================================
 # Digite o seu CPF (com o zero inicial, apenas os números) entre as aspas abaixo:
-CPF_DO_ADMINISTRADOR = "06698038474" 
+CPF_DO_ADMINISTRADOR = "01234567890" 
 
 st.set_page_config(page_title="Busca de Fornecedores", page_icon="🏢", layout="wide")
 
@@ -33,7 +33,7 @@ def conectar_planilha():
 planilha = conectar_planilha()
 aba_usuarios = planilha.worksheet("Usuarios")
 aba_fornecedores = planilha.worksheet("Fornecedores")
-aba_sugestoes = planilha.worksheet("Sugestoes") # Nova aba conectada!
+aba_sugestoes = planilha.worksheet("Sugestoes") 
 
 # ==========================================
 # 2. FUNÇÕES DE APOIO
@@ -292,7 +292,6 @@ else:
             else:
                 st.warning("Nenhum fornecedor cadastrado na base de dados.")
 
-    # Nova Interface para o usuário final enviar Sugestões
     elif menu_interno == "Sugerir Contato de Prestador/Fornecedor":
         st.write("Conhece um bom profissional? Sugira abaixo. A administração da plataforma avaliará os dados antes de disponibilizá-los nas buscas.")
         
@@ -303,21 +302,33 @@ else:
             tel2_f = col_t2.text_input("Contato Telefônico 2")
             email_f = st.text_input("E-mail")
             
-            st.info("📋 **Instrução Obrigatória:** No campo abaixo, descreva detalhadamente quais as atividades, serviços ou produtos com os quais este prestador ou fornecedor trabalha. Seja específico para facilitar a avaliação.")
+            st.info("📋 **Instrução Obrigatória:** No campo abaixo, descreva detalhadamente quais as atividades, serviços ou produtos com os quais este prestador ou fornecedor trabalha. Seja específico para facilitar a avaliação da Administração.")
             descricao_f = st.text_area("Descreva as atividades ou produtos *")
             
-            if st.form_submit_button("Enviar"):
+            if st.form_submit_button("Enviar Sugestão"):
                 if not nome_f or not tel1_f or not descricao_f:
                     st.error("Nome, Contato 1 e a Descrição das atividades são obrigatórios.")
                 else:
                     aba_sugestoes.append_row([nome_f, tel1_f, tel2_f, email_f, descricao_f, "Pendente"])
-                    st.success("✅ Sugestão enviada com sucesso! Ela foi encaminhada para análise da administração.")
+                    st.success("✅ Sugestão enviada com sucesso! Ela foi encaminhada para análise.")
 
-    # Nova Interface exclusiva para você analisar e aprovar as Sugestões
     elif menu_interno == "Aprovar Sugestões":
         st.subheader("Sugestões Pendentes de Aprovação")
         st.write("Avalie as indicações, edite os dados conforme necessário e distribua a descrição enviada pelo usuário nos campos de 'Ramo' para manter a base padronizada.")
         
+        # 1. Puxando todos os Ramos existentes na base de dados para montar a lista suspensa
+        df_f_existentes = pd.DataFrame(aba_fornecedores.get_all_records())
+        ramos_existentes = set()
+        if not df_f_existentes.empty:
+            for i in range(1, 6):
+                coluna_ramo = f'RAMO {i}'
+                if coluna_ramo in df_f_existentes.columns:
+                    valores = df_f_existentes[coluna_ramo].astype(str).tolist()
+                    for val in valores:
+                        if val.strip() != "":
+                            ramos_existentes.add(val.strip())
+        opcoes_ramos_oficiais = sorted(list(ramos_existentes))
+
         df_sugestoes = pd.DataFrame(aba_sugestoes.get_all_records())
         if not df_sugestoes.empty:
             pendentes = df_sugestoes[df_sugestoes['status'] == 'Pendente']
@@ -337,32 +348,49 @@ else:
                             edit_t2 = col_b.text_input("Contato 2", value=str(row.get('contato_2', '')))
                             edit_email = st.text_input("E-mail", value=str(row.get('email', '')))
                             
-                            st.write("**Distribua a descrição acima nos Ramos oficiais da plataforma:**")
-                            c1, c2, c3 = st.columns(3)
-                            edit_r1 = c1.text_input("Ramo 1 *")
-                            edit_r2 = c2.text_input("Ramo 2")
-                            edit_r3 = c3.text_input("Ramo 3")
+                            st.write("---")
+                            st.write("**Distribuição nos Ramos Oficiais**")
                             
-                            c4, c5 = st.columns(2)
-                            edit_r4 = c4.text_input("Ramo 4")
-                            edit_r5 = c5.text_input("Ramo 5")
+                            # 2. A lista suspensa inteligente que junta os 5 campos
+                            ramos_selecionados = st.multiselect(
+                                "Selecione os Ramos de Atuação na lista abaixo (Máximo de 5) *", 
+                                options=opcoes_ramos_oficiais, 
+                                max_selections=5
+                            )
+                            
+                            # 3. O Campo para cadastrar Ramos novos
+                            novo_ramo = st.text_input(
+                                "Cadastrar Novo Ramo: Não achou o ramo correto na lista acima? Digite aqui. (Ele será salvo e passará a aparecer na lista suspensa)"
+                            )
                             
                             col_btn1, col_btn2 = st.columns(2)
                             btn_aprovar = col_btn1.form_submit_button("✅ Aprovar e Cadastrar", type="primary")
                             btn_rejeitar = col_btn2.form_submit_button("❌ Rejeitar Sugestão")
                             
                             if btn_aprovar:
+                                # Organizando o que vai ser salvo no banco de dados
+                                lista_final = ramos_selecionados.copy()
+                                if novo_ramo.strip() != "":
+                                    # Caso você queira digitar mais de um novo ramo separando por vírgula
+                                    novos = [r.strip() for r in novo_ramo.split(",") if r.strip() != ""]
+                                    lista_final.extend(novos)
+                                
+                                # Preenche com vazio até ter exatamente 5 itens para encaixar na planilha
+                                while len(lista_final) < 5:
+                                    lista_final.append("")
+                                lista_final = lista_final[:5]
+                                
+                                edit_r1, edit_r2, edit_r3, edit_r4, edit_r5 = lista_final
+                                
                                 if not edit_nome or not edit_t1 or not edit_r1:
-                                    st.error("Para aprovar, o Nome, Contato 1 e pelo menos o Ramo 1 devem estar preenchidos.")
+                                    st.error("Para aprovar, o Nome, Contato 1 e pelo menos um Ramo devem estar preenchidos (seja pela lista suspensa ou pelo campo de Ramo Novo).")
                                 else:
-                                    # Salva na base oficial de Fornecedores
                                     aba_fornecedores.append_row([
                                         edit_nome, edit_t1, edit_t2, edit_email, 
                                         edit_r1, edit_r2, edit_r3, edit_r4, edit_r5, 0
                                     ])
-                                    # Muda o status da sugestão para não aparecer mais aqui
                                     aba_sugestoes.update_cell(i + 2, 6, "Aprovado")
-                                    st.success(f"O fornecedor {edit_nome} foi aprovado e agora está disponível nas buscas!")
+                                    st.success(f"Fornecedor aprovado! O novo ramo também foi salvo na lista suspensa.")
                                     st.rerun()
                                     
                             if btn_rejeitar:
