@@ -12,7 +12,7 @@ import requests
 # CONFIGURAÇÃO DO ADMINISTRADOR (ATENÇÃO AQUI)
 # ==========================================
 # Digite o seu CPF (com o zero inicial, apenas os números) entre as aspas abaixo:
-CPF_DO_ADMINISTRADOR = "06698038474" 
+CPF_DO_ADMINISTRADOR = "01234567890" 
 
 st.set_page_config(page_title="Busca de Fornecedores", page_icon="🏢", layout="wide")
 
@@ -50,31 +50,16 @@ def limpar_cpf(cpf):
     return cpf_num.zfill(11)
 
 def formatar_cpf_visual(cpf):
-    # Formata o CPF com pontos e traço para o Google Sheets não apagar o zero
     c = limpar_cpf(cpf)
     if len(c) == 11:
         return f"{c[:3]}.{c[3:6]}.{c[6:9]}-{c[9:]}"
     return c
 
-@st.cache_data
-def carregar_cidades():
-    try:
-        # Adicionado Header para o IBGE não bloquear o acesso
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        res = requests.get("https://servicodados.ibge.gov.br/api/v1/localidades/municipios", headers=headers, timeout=10)
-        if res.status_code == 200:
-            cidades = sorted([f"{m['nome']} - {m['microrregiao']['mesorregiao']['UF']['sigla']}" for m in res.json()])
-            cidades.insert(0, "") 
-            return cidades
-    except:
-        pass
-    return [""]
-
 def buscar_cep(cep):
     cep_limpo = re.sub(r'[^0-9]', '', str(cep))
     if len(cep_limpo) == 8:
         try:
-            res = requests.get(f"https://viacep.com.br/ws/{cep_limpo}/json/")
+            res = requests.get(f"https://viacep.com.br/ws/{cep_limpo}/json/", timeout=10)
             if res.status_code == 200:
                 return res.json()
         except: pass
@@ -164,7 +149,7 @@ if not st.session_state['logado']:
         email = col1.text_input("E-mail *")
         
         st.write("### Endereço")
-        cep = st.text_input("CEP (Digite apenas os números e clique fora da caixa)")
+        cep = st.text_input("CEP * (Digite apenas os números e clique fora da caixa)")
         
         rua_val, bairro_val, cidade_val = "", "", ""
         if cep and len(re.sub(r'[^0-9]', '', cep)) == 8:
@@ -174,20 +159,16 @@ if not st.session_state['logado']:
                 bairro_val = dados_cep.get("bairro", "")
                 cidade_val = f"{dados_cep.get('localidade', '')} - {dados_cep.get('uf', '')}"
                 st.success("CEP encontrado!")
-            else:
+            elif dados_cep:
                 st.error("CEP não localizado.")
 
         col3, col4 = st.columns([3, 1])
         rua = col3.text_input("Rua *", value=rua_val)
         numero = col4.text_input("Número *")
-        bairro = col3.text_input("Bairro *", value=bairro_val)
         
-        lista_cidades = carregar_cidades()
-        idx_cidade = 0
-        if cidade_val in lista_cidades:
-            idx_cidade = lista_cidades.index(cidade_val)
-            
-        cidade = st.selectbox("Cidade * (Comece a digitar para pesquisar)", options=lista_cidades, index=idx_cidade)
+        col5, col6 = st.columns([2, 2])
+        bairro = col5.text_input("Bairro *", value=bairro_val)
+        cidade = col6.text_input("Cidade *", value=cidade_val)
         
         st.write("### Informações Profissionais")
         perfil = st.selectbox("Qual o seu perfil? *", [
@@ -213,10 +194,10 @@ if not st.session_state['logado']:
                 cpfs_cadastrados = []
                 
             cpf_limpo_cadastro = limpar_cpf(cpf_cadastro)
-            cpf_para_salvar = formatar_cpf_visual(cpf_limpo_cadastro) # Salva com pontuação
+            cpf_para_salvar = formatar_cpf_visual(cpf_limpo_cadastro)
 
-            if not nome or not cpf_cadastro or not email or not rua or not numero or not bairro or not cidade:
-                st.error("Preencha todos os campos obrigatórios (*).")
+            if not nome or not cpf_cadastro or not email or not cep or not rua or not numero or not bairro or not cidade:
+                st.error("Preencha todos os campos obrigatórios (*), incluindo o CEP.")
             elif cpf_limpo_cadastro in cpfs_cadastrados:
                 st.error("Este CPF já está cadastrado.")
             elif perfil != "6 - Sem vinculação" and not condominios:
@@ -254,7 +235,6 @@ else:
         st.session_state['cpf_atual'] = ""
         st.rerun()
 
-    # Controle de acesso: Mostra "Administrar Prioridades" apenas se o CPF logado for o do Administrador
     opcoes_menu = ["Buscar", "Adicionar Novo"]
     if st.session_state.get('cpf_atual') == limpar_cpf(CPF_DO_ADMINISTRADOR):
         opcoes_menu.append("Administrar Prioridades")
