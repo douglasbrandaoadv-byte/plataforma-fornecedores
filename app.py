@@ -80,6 +80,11 @@ def enviar_email(destinatario, codigo):
     except:
         st.warning(f"AVISO: E-mail não configurado. Código simulado para teste: {codigo}")
 
+# Função para redirecionar sem causar erro no Streamlit
+def ir_para_login():
+    st.session_state['sucesso_cadastro'] = False
+    st.session_state['menu_login'] = "Entrar"
+
 # ==========================================
 # 3. INTERFACE DE LOGIN E CADASTRO
 # ==========================================
@@ -133,7 +138,8 @@ if not st.session_state['logado']:
                 for i, row in enumerate(dados_users):
                     if limpar_cpf(row['cpf']) == st.session_state['validando_email']:
                         if str(row['codigo_verificacao']) == codigo_digitado:
-                            aba_usuarios.update_cell(i + 2, 13, 1) 
+                            # Agora a coluna "verificado" é a 14ª coluna, devido à inclusão do telefone
+                            aba_usuarios.update_cell(i + 2, 14, 1) 
                             st.success("Verificado com sucesso! Faça login novamente.")
                             del st.session_state['validando_email']
                             break
@@ -146,7 +152,10 @@ if not st.session_state['logado']:
         col1, col2 = st.columns(2)
         nome = col1.text_input("Nome Completo *")
         cpf_cadastro = col2.text_input("CPF *")
-        email = col1.text_input("E-mail *")
+        
+        col_email, col_tel = st.columns(2)
+        email = col_email.text_input("E-mail *")
+        telefone_cadastro = col_tel.text_input("Contato Telefônico *")
         
         st.write("### Endereço")
         cep = st.text_input("CEP * (Digite apenas os números e clique fora da caixa)")
@@ -196,8 +205,9 @@ if not st.session_state['logado']:
             cpf_limpo_cadastro = limpar_cpf(cpf_cadastro)
             cpf_para_salvar = formatar_cpf_visual(cpf_limpo_cadastro)
 
-            if not nome or not cpf_cadastro or not email or not cep or not rua or not numero or not bairro or not cidade:
-                st.error("Preencha todos os campos obrigatórios (*), incluindo o CEP.")
+            # Adicionado telefone_cadastro na validação obrigatória
+            if not nome or not cpf_cadastro or not email or not telefone_cadastro or not cep or not rua or not numero or not bairro or not cidade:
+                st.error("Preencha todos os campos obrigatórios (*), incluindo o Telefone e o CEP.")
             elif cpf_limpo_cadastro in cpfs_cadastrados:
                 st.error("Este CPF já está cadastrado.")
             elif perfil != "6 - Sem vinculação" and not condominios:
@@ -208,19 +218,18 @@ if not st.session_state['logado']:
                 st.error("Você precisa aceitar os termos de responsabilidade.")
             else:
                 codigo = str(random.randint(100000, 999999))
+                # Adicionado telefone_cadastro na linha que é salva no Google Sheets
                 aba_usuarios.append_row([
-                    cpf_para_salvar, nome, email, cep, rua, numero, bairro, cidade, 
+                    cpf_para_salvar, nome, email, telefone_cadastro, cep, rua, numero, bairro, cidade, 
                     perfil, condominios, senha, codigo, 0
                 ])
                 enviar_email(email, codigo)
                 st.session_state['sucesso_cadastro'] = True
                 
+        # Botão corrigido usando o on_click seguro
         if st.session_state.get('sucesso_cadastro'):
             st.success("✅ Cadastro realizado com sucesso! O código de 6 dígitos foi enviado ao seu e-mail para o primeiro acesso.")
-            if st.button("Ir para a Tela de Acesso (Login)"):
-                st.session_state['sucesso_cadastro'] = False
-                st.session_state['menu_login'] = "Entrar"
-                st.rerun()
+            st.button("Ir para a Tela de Acesso (Login)", on_click=ir_para_login)
 
 # ==========================================
 # 4. PLATAFORMA PRINCIPAL (Após Login)
