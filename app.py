@@ -80,7 +80,6 @@ def enviar_email(destinatario, codigo):
     except:
         st.warning(f"AVISO: E-mail não configurado. Código simulado para teste: {codigo}")
 
-# Função para redirecionar sem causar erro no Streamlit
 def ir_para_login():
     st.session_state['sucesso_cadastro'] = False
     st.session_state['menu_login'] = "Entrar"
@@ -138,10 +137,13 @@ if not st.session_state['logado']:
                 for i, row in enumerate(dados_users):
                     if limpar_cpf(row['cpf']) == st.session_state['validando_email']:
                         if str(row['codigo_verificacao']) == codigo_digitado:
-                            # Agora a coluna "verificado" é a 14ª coluna, devido à inclusão do telefone
                             aba_usuarios.update_cell(i + 2, 14, 1) 
-                            st.success("Verificado com sucesso! Faça login novamente.")
+                            
+                            # LOGA O USUÁRIO AUTOMATICAMENTE E REDIRECIONA
+                            st.session_state['logado'] = True
+                            st.session_state['cpf_atual'] = st.session_state['validando_email']
                             del st.session_state['validando_email']
+                            st.rerun()
                             break
                         else:
                             st.error("Código incorreto.")
@@ -205,7 +207,6 @@ if not st.session_state['logado']:
             cpf_limpo_cadastro = limpar_cpf(cpf_cadastro)
             cpf_para_salvar = formatar_cpf_visual(cpf_limpo_cadastro)
 
-            # Adicionado telefone_cadastro na validação obrigatória
             if not nome or not cpf_cadastro or not email or not telefone_cadastro or not cep or not rua or not numero or not bairro or not cidade:
                 st.error("Preencha todos os campos obrigatórios (*), incluindo o Telefone e o CEP.")
             elif cpf_limpo_cadastro in cpfs_cadastrados:
@@ -218,7 +219,6 @@ if not st.session_state['logado']:
                 st.error("Você precisa aceitar os termos de responsabilidade.")
             else:
                 codigo = str(random.randint(100000, 999999))
-                # Adicionado telefone_cadastro na linha que é salva no Google Sheets
                 aba_usuarios.append_row([
                     cpf_para_salvar, nome, email, telefone_cadastro, cep, rua, numero, bairro, cidade, 
                     perfil, condominios, senha, codigo, 0
@@ -226,7 +226,6 @@ if not st.session_state['logado']:
                 enviar_email(email, codigo)
                 st.session_state['sucesso_cadastro'] = True
                 
-        # Botão corrigido usando o on_click seguro
         if st.session_state.get('sucesso_cadastro'):
             st.success("✅ Cadastro realizado com sucesso! O código de 6 dígitos foi enviado ao seu e-mail para o primeiro acesso.")
             st.button("Ir para a Tela de Acesso (Login)", on_click=ir_para_login)
