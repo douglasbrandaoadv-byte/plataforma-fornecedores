@@ -12,9 +12,9 @@ import requests
 # CONFIGURAÇÃO DO ADMINISTRADOR (ATENÇÃO AQUI)
 # ==========================================
 # Digite o seu CPF (com o zero inicial, apenas os números) entre as aspas abaixo:
-CPF_DO_ADMINISTRADOR = "01234567890" 
+CPF_DO_ADMINISTRADOR = "06698038474" 
 
-st.set_page_config(page_title="Plataforma de Fornecedores", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="Comunidade Síndicos da Paraíba", layout="wide")
 
 # ==========================================
 # APLICAÇÃO DE ESTILOS VISUAIS (CSS)
@@ -122,7 +122,7 @@ if 'menu_login' not in st.session_state:
 
 if not st.session_state['logado']:
     
-    # Imagem de Capa Comercial dimensionada corretamente (Banner)
+    # Imagem de Capa Comercial
     st.markdown(
         """
         <div style="display: flex; justify-content: center; margin-bottom: 20px;">
@@ -132,8 +132,22 @@ if not st.session_state['logado']:
         """, unsafe_allow_html=True
     )
     
-    st.markdown("<h1 style='text-align: center; margin-bottom: 5px;'>🏢 Portal de Prestadores</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #64748B; margin-bottom: 30px; font-size: 18px;'>A base oficial da Comunidade Síndicos da Paraíba</p>", unsafe_allow_html=True)
+    # Novo Título
+    st.markdown("<h1 style='text-align: center; margin-bottom: 20px; font-size: 34px;'>PORTAL DA COMUNIDADE SÍNDICOS DA PARAÍBA</h1>", unsafe_allow_html=True)
+    
+    # Novo texto explicativo com design profissional
+    st.markdown(
+        """
+        <div style="background-color: #FFFFFF; padding: 25px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 30px; border-left: 5px solid #1E3A8A; color: #334155; font-size: 15px; line-height: 1.6;">
+            <p style="margin-top: 0; font-size: 16px;">Bem-vindo ao portal oficial vinculado à <strong>Comunidade Síndicos da Paraíba</strong>. Nossa plataforma foi desenvolvida para facilitar a busca por profissionais qualificados, atendendo com excelência tanto às demandas estruturais de <strong>condomínios</strong> quanto às necessidades particulares dos <strong>condôminos</strong>.</p>
+            <p style="margin-bottom: 10px; color: #1E3A8A;"><strong>Nossos pilares de segurança e qualidade:</strong></p>
+            <ul style="margin-bottom: 0;">
+                <li style="margin-bottom: 8px;"><strong>Validação Real:</strong> Todos os prestadores de serviços e fornecedores cadastrados nesta base possuem uma origem em comum: foram expressamente indicados em nosso grupo oficial de WhatsApp. Isso significa que cada profissional listado já foi contratado, testado e atendeu plenamente às expectativas do cliente (síndico, morador ou membro do grupo).</li>
+                <li><strong>Curadoria de Indicações:</strong> Qualquer usuário externo pode utilizar o portal para sugerir novos fornecedores. No entanto, para preservar a integridade da nossa rede, o cadastro só será aprovado e efetivado se o profissional possuir validação e histórico de satisfação comprovado dentro da nossa Comunidade.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True
+    )
     
     menu = st.radio("Navegação:", ["Entrar", "Cadastrar Novo Usuário", "Esqueci minha senha"], key="menu_login", horizontal=True)
     st.write("---")
@@ -345,7 +359,7 @@ if not st.session_state['logado']:
 # 4. PLATAFORMA PRINCIPAL (Após Login)
 # ==========================================
 else:
-    # Cabeçalho da Área Logada (Banner compacto)
+    # Cabeçalho da Área Logada
     st.markdown(
         """
         <div style="display: flex; justify-content: center; margin-bottom: 20px;">
@@ -355,8 +369,8 @@ else:
         """, unsafe_allow_html=True
     )
     
-    st.markdown("<h2 style='color: #1E3A8A; margin-top: -10px;'>🔍 Busca de Fornecedores Homologados</h2>", unsafe_allow_html=True)
-    st.info("✅ Profissionais validados pela **COMUNIDADE SÍNDICOS DA PARAÍBA**.")
+    st.markdown("<h2 style='color: #1E3A8A; margin-top: -10px;'>PORTAL DA COMUNIDADE SÍNDICOS DA PARAÍBA</h2>", unsafe_allow_html=True)
+    st.info("✅ Todos os profissionais abaixo possuem histórico de satisfação atestado na Comunidade.")
     
     if st.sidebar.button("🚪 Sair / Logout"):
         st.session_state['logado'] = False
@@ -365,7 +379,6 @@ else:
 
     opcoes_menu = ["Buscar", "Sugerir Contato de Prestador/Fornecedor"]
     
-    # Validação exclusiva para exibir menus administrativos
     if st.session_state.get('cpf_atual') == limpar_cpf(CPF_DO_ADMINISTRADOR):
         opcoes_menu.append("Cadastrar Fornecedor Direto")
         opcoes_menu.append("Aprovar Sugestões")
@@ -408,7 +421,6 @@ else:
                 else:
                     st.markdown(f"**{len(filtro)} resultado(s) encontrado(s):**")
                     
-                    # NOVO FORMATO DE EXIBIÇÃO: Único, sem duplicidade e copiável
                     for _, row in filtro.iterrows():
                         ramos_lista = [str(row[f"RAMO {i}"]).strip() for i in range(1, 6) if str(row.get(f"RAMO {i}", "")).strip() != ""]
                         
@@ -423,7 +435,6 @@ else:
                         st.markdown("<p style='font-size: 14px; color: #64748B; margin-bottom: -10px; margin-top: 15px;'>📄 <b>Cartão do Fornecedor</b> (Passe o mouse na caixa abaixo e clique no ícone do canto direito para copiar):</p>", unsafe_allow_html=True)
                         
                         texto_copia = f"🏢 EMPRESA: {row.get('NOME', 'Sem Nome')}\n🛠️ RAMO(S): {', '.join(ramos_lista)}\n📞 CONTATO(S): {' / '.join(contatos_lista)}{email_texto}"
-                        
                         st.code(texto_copia, language="text")
             else:
                 st.warning("A base de dados está vazia.")
@@ -449,11 +460,9 @@ else:
                     aba_sugestoes.append_row([nome_f, tel1_f, tel2_f, email_f, descricao_f, "Pendente"])
                     st.success("✅ Indicação enviada! Agradecemos a colaboração com a Comunidade.")
 
-    # NOVO MENU: Cadastro Direto pelo Administrador
     elif menu_interno == "Cadastrar Fornecedor Direto":
         st.subheader("Cadastro Direto na Base Oficial (Exclusivo Administrador)")
         
-        # Puxa os ramos que já existem para a lista suspensa
         df_f_existentes = pd.DataFrame(aba_fornecedores.get_all_records())
         ramos_existentes = set()
         if not df_f_existentes.empty:
