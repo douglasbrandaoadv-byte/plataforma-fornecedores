@@ -13,7 +13,7 @@ from datetime import datetime
 # CONFIGURAÇÃO DO ADMINISTRADOR (ATENÇÃO AQUI)
 # ==========================================
 # Digite o seu CPF (com o zero inicial, apenas os números) entre as aspas abaixo:
-CPF_DO_ADMINISTRADOR = "01234567890" 
+CPF_DO_ADMINISTRADOR = "06698038474" 
 
 st.set_page_config(page_title="Comunidade Síndicos da Paraíba", page_icon="🏢", layout="wide")
 
