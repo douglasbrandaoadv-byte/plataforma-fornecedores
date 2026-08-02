@@ -12,33 +12,23 @@ import requests
 # CONFIGURAÇÃO DO ADMINISTRADOR (ATENÇÃO AQUI)
 # ==========================================
 # Digite o seu CPF (com o zero inicial, apenas os números) entre as aspas abaixo:
-CPF_DO_ADMINISTRADOR = "06698038474" 
+CPF_DO_ADMINISTRADOR = "01234567890" 
 
 st.set_page_config(page_title="Plataforma de Fornecedores", page_icon="🏢", layout="wide")
 
 # ==========================================
-# APLICAÇÃO DE ESTILOS VISUAIS (CSS PERSONALIZADO)
+# APLICAÇÃO DE ESTILOS VISUAIS (CSS)
 # ==========================================
 estilo_customizado = """
     <style>
     /* Estilização dos textos e cabeçalhos */
-    h1, h2, h3 {
-        color: #1E3A8A !important;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
+    h1, h2, h3 { color: #1E3A8A !important; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     
-    /* Personalização do botão primário */
-    .stButton > button {
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-        transition: all 0.3s ease !important;
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(30, 58, 138, 0.2) !important;
-    }
+    /* Personalização dos botões */
+    .stButton > button { border-radius: 8px !important; font-weight: 600 !important; transition: all 0.3s ease !important; }
+    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(30, 58, 138, 0.2) !important; }
     
-    /* Ocultar elementos desnecessários do Streamlit para visual mais limpo */
+    /* Ocultar elementos desnecessários */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
@@ -131,9 +121,12 @@ if 'menu_login' not in st.session_state:
     st.session_state['menu_login'] = "Entrar"
 
 if not st.session_state['logado']:
-    # Cabeçalho Moderno na Tela de Login
+    
+    # Imagem de Capa Comercial (Condomínio de Alto Padrão)
+    st.image("https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=80", use_container_width=True)
+    
     st.markdown("<h1 style='text-align: center; margin-bottom: 5px;'>🏢 Portal de Prestadores</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #64748B; margin-bottom: 30px;'>A base oficial da Comunidade Síndicos da Paraíba</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #64748B; margin-bottom: 30px; font-size: 18px;'>A base oficial da Comunidade Síndicos da Paraíba</p>", unsafe_allow_html=True)
     
     menu = st.radio("Navegação:", ["Entrar", "Cadastrar Novo Usuário", "Esqueci minha senha"], key="menu_login", horizontal=True)
     st.write("---")
@@ -345,7 +338,9 @@ if not st.session_state['logado']:
 # 4. PLATAFORMA PRINCIPAL (Após Login)
 # ==========================================
 else:
-    # Cabeçalho da Área Logada
+    # Cabeçalho da Área Logada (Imagem menor e mais discreta)
+    st.image("https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&h=200&q=80", use_container_width=True)
+    
     st.markdown("<h2 style='color: #1E3A8A;'>🔍 Busca de Fornecedores Homologados</h2>", unsafe_allow_html=True)
     st.info("✅ Profissionais validados pela **COMUNIDADE SÍNDICOS DA PARAÍBA**.")
     
@@ -396,7 +391,6 @@ else:
                 else:
                     st.markdown(f"**{len(filtro)} resultado(s) encontrado(s):**")
                     
-                    # RENDERIZAÇÃO DO CARTÃO HTML MODERNIZADO
                     for _, row in filtro.iterrows():
                         ramos_lista = [str(row[f"RAMO {i}"]).strip() for i in range(1, 6) if str(row.get(f"RAMO {i}", "")).strip() != ""]
                         
@@ -406,27 +400,22 @@ else:
                         if 'CONTATO 2' in row and str(row['CONTATO 2']).strip() != "":
                             contatos_lista.append(str(row['CONTATO 2']).strip())
                             
-                        email_texto = f"<p style='margin: 5px 0;'><strong>✉️ E-mail:</strong> {row['EMAIL']}</p>" if 'EMAIL' in row and str(row['EMAIL']).strip() != "" else ""
+                        email_texto = f"\n✉️ E-mail: {row['EMAIL']}" if 'EMAIL' in row and str(row['EMAIL']).strip() != "" else ""
                         
-                        # Estrutura Visual do Cartão
-                        cartao_html = f"""
-                        <div style="
-                            background-color: #FFFFFF; 
-                            padding: 20px; 
-                            border-radius: 10px; 
-                            box-shadow: 0 4px 8px rgba(0,0,0,0.05); 
-                            margin-bottom: 20px; 
-                            border-left: 6px solid #1E3A8A;
-                            border: 1px solid #E2E8F0; border-left-width: 6px;">
-                            <h3 style="margin-top:0; color: #1E3A8A; font-size: 20px;">🏢 {row.get('NOME', 'Sem Nome')}</h3>
-                            <div style="color: #475569; font-size: 15px;">
-                                <p style="margin: 5px 0;"><strong>🛠️ Ramo(s):</strong> {', '.join(ramos_lista)}</p>
-                                <p style="margin: 5px 0;"><strong>📞 Contato(s):</strong> {' / '.join(contatos_lista)}</p>
-                                {email_texto}
-                            </div>
-                        </div>
-                        """
-                        st.markdown(cartao_html, unsafe_allow_html=True)
+                        # NOVO FORMATO DE CARTÃO SEGURO (Sem erro HTML)
+                        with st.container(border=True):
+                            st.markdown(f"### 🏢 {row.get('NOME', 'Sem Nome')}")
+                            st.markdown(f"**🛠️ Ramo(s):** {', '.join(ramos_lista)}")
+                            st.markdown(f"**📞 Contato(s):** {' / '.join(contatos_lista)}")
+                            if 'EMAIL' in row and str(row['EMAIL']).strip() != "":
+                                st.markdown(f"**✉️ E-mail:** {row['EMAIL']}")
+                            
+                            st.write("---")
+                            st.markdown("<p style='font-size: 14px; color: #64748B;'>📄 <b>Copiar e Compartilhar:</b> Passe o mouse na caixa abaixo e clique no ícone de cópia (no canto direito) para colar no WhatsApp.</p>", unsafe_allow_html=True)
+                            
+                            texto_copia = f"🏢 *{row.get('NOME', 'Sem Nome')}*\n🛠️ Ramo(s): {', '.join(ramos_lista)}\n📞 Contato(s): {' / '.join(contatos_lista)}{email_texto}"
+                            st.code(texto_copia, language="text")
+                            
             else:
                 st.warning("A base de dados está vazia.")
 
@@ -495,7 +484,7 @@ else:
                             
                             novo_ramo = st.text_input("Criar Novo Ramo (Será adicionado ao banco de dados):")
                             
-                            st.write("") # Espaço
+                            st.write("") 
                             col_btn1, col_btn2 = st.columns(2)
                             btn_aprovar = col_btn1.form_submit_button("✅ Aprovar e Publicar", type="primary")
                             btn_rejeitar = col_btn2.form_submit_button("❌ Rejeitar e Descartar")
