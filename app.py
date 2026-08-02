@@ -17,7 +17,7 @@ CPF_DO_ADMINISTRADOR = "06698038474"
 st.set_page_config(page_title="Busca de Fornecedores", page_icon="🏢", layout="wide")
 
 # ==========================================
-# 1. CONEXÃO COM A PLANILHA DO GOOGLE
+# 1. CONEXÃO COM A PLANILHA DO GOOGLE E SEGREDOS
 # ==========================================
 @st.cache_resource(ttl=600)
 def conectar_planilha():
@@ -66,27 +66,32 @@ def buscar_cep(cep):
         except: pass
     return {}
 
-def enviar_email(destinatario, codigo):
-    remetente = "SEU_EMAIL_AQUI@gmail.com" 
-    senha_app = "SUA_SENHA_DE_APP_AQUI" 
-    msg = MIMEText(f"Seu código de verificação é: {codigo}")
-    msg['Subject'] = 'Código de Verificação - Plataforma'
-    msg['From'] = remetente
-    msg['To'] = destinatario
+def enviar_email(destinatario, codigo, tipo="cadastro"):
     try:
+        remetente = st.secrets["email_remetente"]
+        senha_app = st.secrets["senha_email"]
+        
+        assunto = 'Código de Verificação - Plataforma' if tipo == "cadastro" else 'Recuperação de Senha - Plataforma'
+        msg = MIMEText(f"Seu código de verificação é: {codigo}")
+        msg['Subject'] = assunto
+        msg['From'] = remetente
+        msg['To'] = destinatario
+        
         server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         server.login(remetente, senha_app)
         server.sendmail(remetente, [destinatario], msg.as_string())
         server.quit()
-    except:
-        st.warning(f"AVISO: E-mail não configurado. Código simulado para teste: {codigo}")
+        return True
+    except Exception as e:
+        st.error("Falha ao enviar e-mail. Verifique se as configurações (Secrets) do remetente e senha estão corretas.")
+        return False
 
 def ir_para_login():
     st.session_state['sucesso_cadastro'] = False
     st.session_state['menu_login'] = "Entrar"
 
 # ==========================================
-# 3. INTERFACE DE LOGIN E CADASTRO
+# 3. INTERFACE DE LOGIN, CADASTRO E RECUPERAÇÃO
 # ==========================================
 if 'logado' not in st.session_state:
     st.session_state['logado'] = False
@@ -98,7 +103,7 @@ if 'menu_login' not in st.session_state:
 if not st.session_state['logado']:
     st.title("🏢 Plataforma de Fornecedores")
     
-    menu = st.radio("Selecione uma opção:", ["Entrar", "Cadastrar Novo Usuário"], key="menu_login", horizontal=True)
+    menu = st.radio("Selecione uma opção:", ["Entrar", "Cadastrar Novo Usuário", "Esqueci minha senha"], key="menu_login", horizontal=True)
     
     if menu == "Entrar":
         st.subheader("Acesse sua conta")
@@ -123,7 +128,7 @@ if not st.session_state['logado']:
                             st.rerun()
                         else:
                             st.session_state['validando_email'] = cpf_digitado_tratado
-                            st.warning("Primeiro acesso detectado! Verifique seu e-mail.")
+                            st.warning("Primeiro acesso detectado! Verifique seu e-mail para inserir o código.")
                     else:
                         st.error("Senha incorreta.")
                 else:
@@ -132,14 +137,13 @@ if not st.session_state['logado']:
                 st.error("Nenhum usuário cadastrado.")
 
         if 'validando_email' in st.session_state:
-            codigo_digitado = st.text_input("Digite o código de 6 dígitos:")
+            codigo_digitado = st.text_input("Digite o código de 6 dígitos enviado ao seu e-mail:")
             if st.button("Validar Código"):
                 dados_users = aba_usuarios.get_all_records()
                 for i, row in enumerate(dados_users):
                     if limpar_cpf(row['cpf']) == st.session_state['validando_email']:
                         if str(row['codigo_verificacao']) == codigo_digitado:
                             aba_usuarios.update_cell(i + 2, 14, 1) 
-                            
                             st.session_state['logado'] = True
                             st.session_state['cpf_atual'] = st.session_state['validando_email']
                             del st.session_state['validando_email']
@@ -219,16 +223,83 @@ if not st.session_state['logado']:
                 st.error("Você precisa aceitar os termos de responsabilidade.")
             else:
                 codigo = str(random.randint(100000, 999999))
-                aba_usuarios.append_row([
-                    cpf_para_salvar, nome, email, telefone_cadastro, cep, rua, numero, bairro, cidade, 
-                    perfil, condominios, senha, codigo, 0
-                ])
-                enviar_email(email, codigo)
-                st.session_state['sucesso_cadastro'] = True
+                sucesso_email = enviar_email(email, codigo, "cadastro")
+                
+                if sucesso_email:
+                    aba_usuarios.append_row([
+                        cpf_para_salvar, nome, email, telefone_cadastro, cep, rua, numero, bairro, cidade, 
+                        perfil, condominios, senha, codigo, 0
+                    ])
+                    st.session_state['sucesso_cadastro'] = True
                 
         if st.session_state.get('sucesso_cadastro'):
             st.success("✅ Cadastro realizado com sucesso! O código de 6 dígitos foi enviado ao seu e-mail para o primeiro acesso.")
             st.button("Ir para a Tela de Acesso (Login)", on_click=ir_para_login)
+
+    elif menu == "Esqueci minha senha":
+        st.subheader("Recuperação de Senha")
+        
+        if 'fase_recuperacao' not in st.session_state:
+            st.session_state['fase_recuperacao'] = 1
+            st.session_state['cpf_recuperacao'] = ""
+            
+        if st.session_state['fase_recuperacao'] == 1:
+            st.write("Informe o seu CPF. Nós enviaremos um código de validação para o e-mail associado à sua conta.")
+            cpf_rec = st.text_input("Digite seu CPF cadastrado:")
+            if st.button("Enviar Código de Recuperação"):
+                cpf_limpo_rec = limpar_cpf(cpf_rec)
+                df_users = pd.DataFrame(aba_usuarios.get_all_records())
+                if not df_users.empty:
+                    df_users['cpf_tratado'] = df_users['cpf'].apply(limpar_cpf)
+                    if cpf_limpo_rec in df_users['cpf_tratado'].tolist():
+                        usuario = df_users[df_users['cpf_tratado'] == cpf_limpo_rec].iloc[0]
+                        email_usuario = usuario['email']
+                        
+                        codigo_rec = str(random.randint(100000, 999999))
+                        
+                        indice_planilha = df_users[df_users['cpf_tratado'] == cpf_limpo_rec].index[0]
+                        aba_usuarios.update_cell(int(indice_planilha) + 2, 13, codigo_rec)
+                        
+                        if enviar_email(email_usuario, codigo_rec, "recuperacao"):
+                            st.session_state['fase_recuperacao'] = 2
+                            st.session_state['cpf_recuperacao'] = cpf_limpo_rec
+                            st.rerun()
+                    else:
+                        st.error("CPF não encontrado em nossa base.")
+                else:
+                    st.error("Base de dados vazia.")
+                    
+        elif st.session_state['fase_recuperacao'] == 2:
+            st.info("Um código foi enviado ao seu e-mail. Verifique também a caixa de spam.")
+            codigo_digitado_rec = st.text_input("Digite o código de 6 dígitos:")
+            if st.button("Validar Código"):
+                df_users = pd.DataFrame(aba_usuarios.get_all_records())
+                df_users['cpf_tratado'] = df_users['cpf'].apply(limpar_cpf)
+                usuario = df_users[df_users['cpf_tratado'] == st.session_state['cpf_recuperacao']].iloc[0]
+                
+                if str(usuario['codigo_verificacao']) == str(codigo_digitado_rec):
+                    st.session_state['fase_recuperacao'] = 3
+                    st.rerun()
+                else:
+                    st.error("Código incorreto.")
+                    
+        elif st.session_state['fase_recuperacao'] == 3:
+            st.success("Código validado! Crie sua nova senha.")
+            nova_senha = st.text_input("Nova Senha * (Mín. 8 char, 1 Maiúscula, 1 Minúscula, 1 Número)", type="password")
+            if st.button("Salvar Nova Senha"):
+                if validar_senha(nova_senha):
+                    df_users = pd.DataFrame(aba_usuarios.get_all_records())
+                    df_users['cpf_tratado'] = df_users['cpf'].apply(limpar_cpf)
+                    indice_planilha = df_users[df_users['cpf_tratado'] == st.session_state['cpf_recuperacao']].index[0]
+                    
+                    aba_usuarios.update_cell(int(indice_planilha) + 2, 12, nova_senha)
+                    
+                    st.success("Senha atualizada com sucesso!")
+                    st.session_state['fase_recuperacao'] = 1
+                    st.session_state['cpf_recuperacao'] = ""
+                    st.button("Ir para Login", on_click=ir_para_login)
+                else:
+                    st.error("A senha não atende aos requisitos de segurança.")
 
 # ==========================================
 # 4. PLATAFORMA PRINCIPAL (Após Login)
@@ -251,17 +322,23 @@ else:
     menu_interno = st.radio("Menu Principal", opcoes_menu, horizontal=True)
 
     if menu_interno == "Buscar":
-        termo = st.text_input("Buscar por Nome ou Ramo de Atuação:")
+        col_b1, col_b2 = st.columns(2)
+        busca_nome = col_b1.text_input("Buscar pelo Nome do Fornecedor:")
+        busca_ramo = col_b2.text_input("Buscar pelo Ramo de Atuação:")
+        
         if st.button("Pesquisar"):
             df_forn = pd.DataFrame(aba_fornecedores.get_all_records())
             if not df_forn.empty:
                 df_forn = df_forn.fillna("")
                 df_forn['Todos_Ramos'] = df_forn['RAMO 1'].astype(str) + " " + df_forn['RAMO 2'].astype(str) + " " + df_forn['RAMO 3'].astype(str) + " " + df_forn['RAMO 4'].astype(str) + " " + df_forn['RAMO 5'].astype(str)
                 
-                filtro = df_forn[
-                    df_forn['NOME'].astype(str).str.contains(termo, case=False, na=False) | 
-                    df_forn['Todos_Ramos'].str.contains(termo, case=False, na=False)
-                ]
+                filtro = df_forn.copy()
+                
+                if busca_nome.strip() != "":
+                    filtro = filtro[filtro['NOME'].astype(str).str.contains(busca_nome.strip(), case=False, na=False)]
+                
+                if busca_ramo.strip() != "":
+                    filtro = filtro[filtro['Todos_Ramos'].str.contains(busca_ramo.strip(), case=False, na=False)]
                 
                 if 'PRIORIDADE' not in filtro.columns:
                     filtro['PRIORIDADE'] = 0
@@ -270,25 +347,28 @@ else:
                 
                 filtro = filtro.sort_values(by=['PRIORIDADE', 'NOME'], ascending=[False, True])
                 
-                for _, row in filtro.iterrows():
-                    ramos_lista = []
-                    for i in range(1, 6):
-                        col_ramo = f"RAMO {i}"
-                        if col_ramo in row and str(row[col_ramo]).strip() != "":
-                            ramos_lista.append(str(row[col_ramo]).strip())
-                    
-                    contatos_lista = []
-                    if 'CONTATO 1' in row and str(row['CONTATO 1']).strip() != "":
-                        contatos_lista.append(str(row['CONTATO 1']).strip())
-                    if 'CONTATO 2' in row and str(row['CONTATO 2']).strip() != "":
-                        contatos_lista.append(str(row['CONTATO 2']).strip())
-                    
-                    st.markdown(f"### 🏢 {row.get('NOME', 'Sem Nome')}")
-                    st.markdown(f"**Ramos de Atuação:** {', '.join(ramos_lista)}")
-                    st.markdown(f"**Contatos:** {' / '.join(contatos_lista)}")
-                    if 'EMAIL' in row and str(row['EMAIL']).strip() != "":
-                        st.markdown(f"**E-mail:** {row['EMAIL']}")
-                    st.divider()
+                if filtro.empty:
+                    st.warning("Nenhum fornecedor encontrado com os termos pesquisados.")
+                else:
+                    for _, row in filtro.iterrows():
+                        ramos_lista = []
+                        for i in range(1, 6):
+                            col_ramo = f"RAMO {i}"
+                            if col_ramo in row and str(row[col_ramo]).strip() != "":
+                                ramos_lista.append(str(row[col_ramo]).strip())
+                        
+                        contatos_lista = []
+                        if 'CONTATO 1' in row and str(row['CONTATO 1']).strip() != "":
+                            contatos_lista.append(str(row['CONTATO 1']).strip())
+                        if 'CONTATO 2' in row and str(row['CONTATO 2']).strip() != "":
+                            contatos_lista.append(str(row['CONTATO 2']).strip())
+                        
+                        st.markdown(f"### 🏢 {row.get('NOME', 'Sem Nome')}")
+                        st.markdown(f"**Ramos de Atuação:** {', '.join(ramos_lista)}")
+                        st.markdown(f"**Contatos:** {' / '.join(contatos_lista)}")
+                        if 'EMAIL' in row and str(row['EMAIL']).strip() != "":
+                            st.markdown(f"**E-mail:** {row['EMAIL']}")
+                        st.divider()
             else:
                 st.warning("Nenhum fornecedor cadastrado na base de dados.")
 
@@ -316,7 +396,6 @@ else:
         st.subheader("Sugestões Pendentes de Aprovação")
         st.write("Avalie as indicações, edite os dados conforme necessário e distribua a descrição enviada pelo usuário nos campos de 'Ramo' para manter a base padronizada.")
         
-        # 1. Puxando todos os Ramos existentes na base de dados para montar a lista suspensa
         df_f_existentes = pd.DataFrame(aba_fornecedores.get_all_records())
         ramos_existentes = set()
         if not df_f_existentes.empty:
@@ -351,14 +430,12 @@ else:
                             st.write("---")
                             st.write("**Distribuição nos Ramos Oficiais**")
                             
-                            # 2. A lista suspensa inteligente que junta os 5 campos
                             ramos_selecionados = st.multiselect(
                                 "Selecione os Ramos de Atuação na lista abaixo (Máximo de 5) *", 
                                 options=opcoes_ramos_oficiais, 
                                 max_selections=5
                             )
                             
-                            # 3. O Campo para cadastrar Ramos novos
                             novo_ramo = st.text_input(
                                 "Cadastrar Novo Ramo: Não achou o ramo correto na lista acima? Digite aqui. (Ele será salvo e passará a aparecer na lista suspensa)"
                             )
@@ -368,14 +445,11 @@ else:
                             btn_rejeitar = col_btn2.form_submit_button("❌ Rejeitar Sugestão")
                             
                             if btn_aprovar:
-                                # Organizando o que vai ser salvo no banco de dados
                                 lista_final = ramos_selecionados.copy()
                                 if novo_ramo.strip() != "":
-                                    # Caso você queira digitar mais de um novo ramo separando por vírgula
                                     novos = [r.strip() for r in novo_ramo.split(",") if r.strip() != ""]
                                     lista_final.extend(novos)
                                 
-                                # Preenche com vazio até ter exatamente 5 itens para encaixar na planilha
                                 while len(lista_final) < 5:
                                     lista_final.append("")
                                 lista_final = lista_final[:5]
