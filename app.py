@@ -122,8 +122,15 @@ if 'menu_login' not in st.session_state:
 
 if not st.session_state['logado']:
     
-    # Imagem de Capa Comercial (Condomínio de Alto Padrão)
-    st.image("https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=80", use_container_width=True)
+    # Imagem de Capa Comercial dimensionada corretamente (Banner)
+    st.markdown(
+        """
+        <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+            <img src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&h=300&q=80" 
+                 style="width: 100%; max-height: 220px; object-fit: cover; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        </div>
+        """, unsafe_allow_html=True
+    )
     
     st.markdown("<h1 style='text-align: center; margin-bottom: 5px;'>🏢 Portal de Prestadores</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #64748B; margin-bottom: 30px; font-size: 18px;'>A base oficial da Comunidade Síndicos da Paraíba</p>", unsafe_allow_html=True)
@@ -338,10 +345,17 @@ if not st.session_state['logado']:
 # 4. PLATAFORMA PRINCIPAL (Após Login)
 # ==========================================
 else:
-    # Cabeçalho da Área Logada (Imagem menor e mais discreta)
-    st.image("https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&h=200&q=80", use_container_width=True)
+    # Cabeçalho da Área Logada (Banner compacto)
+    st.markdown(
+        """
+        <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+            <img src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&h=200&q=80" 
+                 style="width: 100%; max-height: 120px; object-fit: cover; border-radius: 10px;">
+        </div>
+        """, unsafe_allow_html=True
+    )
     
-    st.markdown("<h2 style='color: #1E3A8A;'>🔍 Busca de Fornecedores Homologados</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color: #1E3A8A; margin-top: -10px;'>🔍 Busca de Fornecedores Homologados</h2>", unsafe_allow_html=True)
     st.info("✅ Profissionais validados pela **COMUNIDADE SÍNDICOS DA PARAÍBA**.")
     
     if st.sidebar.button("🚪 Sair / Logout"):
@@ -350,7 +364,10 @@ else:
         st.rerun()
 
     opcoes_menu = ["Buscar", "Sugerir Contato de Prestador/Fornecedor"]
+    
+    # Validação exclusiva para exibir menus administrativos
     if st.session_state.get('cpf_atual') == limpar_cpf(CPF_DO_ADMINISTRADOR):
+        opcoes_menu.append("Cadastrar Fornecedor Direto")
         opcoes_menu.append("Aprovar Sugestões")
         opcoes_menu.append("Administrar Prioridades")
 
@@ -391,6 +408,7 @@ else:
                 else:
                     st.markdown(f"**{len(filtro)} resultado(s) encontrado(s):**")
                     
+                    # NOVO FORMATO DE EXIBIÇÃO: Único, sem duplicidade e copiável
                     for _, row in filtro.iterrows():
                         ramos_lista = [str(row[f"RAMO {i}"]).strip() for i in range(1, 6) if str(row.get(f"RAMO {i}", "")).strip() != ""]
                         
@@ -402,20 +420,11 @@ else:
                             
                         email_texto = f"\n✉️ E-mail: {row['EMAIL']}" if 'EMAIL' in row and str(row['EMAIL']).strip() != "" else ""
                         
-                        # NOVO FORMATO DE CARTÃO SEGURO (Sem erro HTML)
-                        with st.container(border=True):
-                            st.markdown(f"### 🏢 {row.get('NOME', 'Sem Nome')}")
-                            st.markdown(f"**🛠️ Ramo(s):** {', '.join(ramos_lista)}")
-                            st.markdown(f"**📞 Contato(s):** {' / '.join(contatos_lista)}")
-                            if 'EMAIL' in row and str(row['EMAIL']).strip() != "":
-                                st.markdown(f"**✉️ E-mail:** {row['EMAIL']}")
-                            
-                            st.write("---")
-                            st.markdown("<p style='font-size: 14px; color: #64748B;'>📄 <b>Copiar e Compartilhar:</b> Passe o mouse na caixa abaixo e clique no ícone de cópia (no canto direito) para colar no WhatsApp.</p>", unsafe_allow_html=True)
-                            
-                            texto_copia = f"🏢 *{row.get('NOME', 'Sem Nome')}*\n🛠️ Ramo(s): {', '.join(ramos_lista)}\n📞 Contato(s): {' / '.join(contatos_lista)}{email_texto}"
-                            st.code(texto_copia, language="text")
-                            
+                        st.markdown("<p style='font-size: 14px; color: #64748B; margin-bottom: -10px; margin-top: 15px;'>📄 <b>Cartão do Fornecedor</b> (Passe o mouse na caixa abaixo e clique no ícone do canto direito para copiar):</p>", unsafe_allow_html=True)
+                        
+                        texto_copia = f"🏢 EMPRESA: {row.get('NOME', 'Sem Nome')}\n🛠️ RAMO(S): {', '.join(ramos_lista)}\n📞 CONTATO(S): {' / '.join(contatos_lista)}{email_texto}"
+                        
+                        st.code(texto_copia, language="text")
             else:
                 st.warning("A base de dados está vazia.")
 
@@ -439,6 +448,60 @@ else:
                 else:
                     aba_sugestoes.append_row([nome_f, tel1_f, tel2_f, email_f, descricao_f, "Pendente"])
                     st.success("✅ Indicação enviada! Agradecemos a colaboração com a Comunidade.")
+
+    # NOVO MENU: Cadastro Direto pelo Administrador
+    elif menu_interno == "Cadastrar Fornecedor Direto":
+        st.subheader("Cadastro Direto na Base Oficial (Exclusivo Administrador)")
+        
+        # Puxa os ramos que já existem para a lista suspensa
+        df_f_existentes = pd.DataFrame(aba_fornecedores.get_all_records())
+        ramos_existentes = set()
+        if not df_f_existentes.empty:
+            for i in range(1, 6):
+                coluna_ramo = f'RAMO {i}'
+                if coluna_ramo in df_f_existentes.columns:
+                    valores = df_f_existentes[coluna_ramo].astype(str).tolist()
+                    for val in valores:
+                        if val.strip() != "":
+                            ramos_existentes.add(val.strip())
+        opcoes_ramos_oficiais = sorted(list(ramos_existentes))
+
+        with st.form("form_cadastro_direto"):
+            nome_f = st.text_input("Nome da Empresa/Prestador *")
+            col_t1, col_t2 = st.columns(2)
+            tel1_f = col_t1.text_input("Contato Telefônico 1 *")
+            tel2_f = col_t2.text_input("Contato Telefônico 2")
+            email_f = st.text_input("E-mail")
+            
+            ramos_selecionados = st.multiselect(
+                "Selecione os Ramos de Atuação Oficiais (Máx. 5) *", 
+                options=opcoes_ramos_oficiais, 
+                max_selections=5
+            )
+            
+            novo_ramo = st.text_input("Cadastrar Novo Ramo (Caso não exista na lista acima):")
+            
+            st.write("")
+            if st.form_submit_button("✅ Cadastrar Fornecedor na Planilha", type="primary"):
+                lista_final = ramos_selecionados.copy()
+                if novo_ramo.strip() != "":
+                    novos = [r.strip() for r in novo_ramo.split(",") if r.strip() != ""]
+                    lista_final.extend(novos)
+                
+                while len(lista_final) < 5:
+                    lista_final.append("")
+                lista_final = lista_final[:5]
+                
+                edit_r1, edit_r2, edit_r3, edit_r4, edit_r5 = lista_final
+                
+                if not nome_f or not tel1_f or not edit_r1:
+                    st.error("Nome, Contato 1 e pelo menos um Ramo de Atuação são obrigatórios.")
+                else:
+                    aba_fornecedores.append_row([
+                        nome_f, tel1_f, tel2_f, email_f, 
+                        edit_r1, edit_r2, edit_r3, edit_r4, edit_r5, 0
+                    ])
+                    st.success(f"Fornecedor '{nome_f}' inserido com sucesso na base de dados!")
 
     elif menu_interno == "Aprovar Sugestões":
         st.subheader("Painel de Homologação (Administrativo)")
