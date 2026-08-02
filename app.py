@@ -7,6 +7,7 @@ from email.mime.text import MIMEText
 import re
 import json
 import requests
+from datetime import datetime
 
 # ==========================================
 # CONFIGURAÇÃO DO ADMINISTRADOR (ATENÇÃO AQUI)
@@ -14,7 +15,7 @@ import requests
 # Digite o seu CPF (com o zero inicial, apenas os números) entre as aspas abaixo:
 CPF_DO_ADMINISTRADOR = "01234567890" 
 
-st.set_page_config(page_title="Comunidade Síndicos da Paraíba", layout="wide")
+st.set_page_config(page_title="Comunidade Síndicos da Paraíba", page_icon="🏢", layout="wide")
 
 # ==========================================
 # APLICAÇÃO DE ESTILOS VISUAIS (CSS)
@@ -54,9 +55,10 @@ planilha = conectar_planilha()
 aba_usuarios = planilha.worksheet("Usuarios")
 aba_fornecedores = planilha.worksheet("Fornecedores")
 aba_sugestoes = planilha.worksheet("Sugestoes") 
+aba_logs = planilha.worksheet("Logs") # Nova aba de estatísticas conectada!
 
 # ==========================================
-# 2. FUNÇÕES DE APOIO
+# 2. FUNÇÕES DE APOIO E TELEMETRIA
 # ==========================================
 def validar_senha(senha):
     if len(senha) < 8: return False
@@ -103,12 +105,20 @@ def enviar_email(destinatario, codigo, tipo="cadastro"):
         server.quit()
         return True
     except Exception as e:
-        st.error("Falha ao enviar e-mail. Verifique se as configurações (Secrets) do remetente e senha estão corretas.")
+        st.error("Falha ao enviar e-mail. Verifique os Secrets.")
         return False
 
 def ir_para_login():
     st.session_state['sucesso_cadastro'] = False
     st.session_state['menu_login'] = "Entrar"
+
+# FUNÇÃO INVISÍVEL QUE GRAVA AS AÇÕES DO USUÁRIO NA PLANILHA DE LOGS
+def registrar_log(cpf, acao, termo_nome="", termo_ramo="", fornecedores=""):
+    try:
+        data_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        aba_logs.append_row([data_atual, str(cpf), acao, termo_nome, termo_ramo, fornecedores])
+    except Exception as e:
+        pass # Ignora erro silenciosamente para não atrapalhar a navegação do usuário
 
 # ==========================================
 # 3. INTERFACE DE LOGIN, CADASTRO E RECUPERAÇÃO
@@ -122,7 +132,6 @@ if 'menu_login' not in st.session_state:
 
 if not st.session_state['logado']:
     
-    # Imagem de Capa Comercial
     st.markdown(
         """
         <div style="display: flex; justify-content: center; margin-bottom: 20px;">
@@ -132,10 +141,8 @@ if not st.session_state['logado']:
         """, unsafe_allow_html=True
     )
     
-    # Título Principal
     st.markdown("<h1 style='text-align: center; margin-bottom: 20px; font-size: 34px;'>PORTAL DA COMUNIDADE SÍNDICOS DA PARAÍBA</h1>", unsafe_allow_html=True)
     
-    # Quadro de Apresentação e Regras
     st.markdown(
         """
         <div style="background-color: #FFFFFF; padding: 25px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 30px; border-left: 5px solid #1E3A8A; color: #334155; font-size: 15px; line-height: 1.6;">
@@ -174,6 +181,7 @@ if not st.session_state['logado']:
                             if int(usuario_encontrado['verificado']) == 1:
                                 st.session_state['logado'] = True
                                 st.session_state['cpf_atual'] = cpf_digitado_tratado
+                                registrar_log(cpf_digitado_tratado, "Acesso") # Registra o Login
                                 st.rerun()
                             else:
                                 st.session_state['validando_email'] = cpf_digitado_tratado
@@ -196,6 +204,7 @@ if not st.session_state['logado']:
                                 aba_usuarios.update_cell(i + 2, 14, 1) 
                                 st.session_state['logado'] = True
                                 st.session_state['cpf_atual'] = st.session_state['validando_email']
+                                registrar_log(st.session_state['validando_email'], "Acesso") # Registra o Login
                                 del st.session_state['validando_email']
                                 st.rerun()
                                 break
@@ -204,7 +213,6 @@ if not st.session_state['logado']:
 
     elif menu == "Cadastrar Novo Usuário":
         st.subheader("Cadastro de Usuário")
-        st.write("Preencha as informações abaixo para ter acesso à base de prestadores.")
         
         with st.container(border=True):
             col1, col2 = st.columns(2)
@@ -359,7 +367,6 @@ if not st.session_state['logado']:
 # 4. PLATAFORMA PRINCIPAL (Após Login)
 # ==========================================
 else:
-    # Cabeçalho da Área Logada (Banner compacto)
     st.markdown(
         """
         <div style="display: flex; justify-content: center; margin-bottom: 20px;">
@@ -379,11 +386,11 @@ else:
 
     opcoes_menu = ["Buscar", "Sugerir Contato de Prestador/Fornecedor"]
     
-    # Validação exclusiva para exibir menus administrativos
     if st.session_state.get('cpf_atual') == limpar_cpf(CPF_DO_ADMINISTRADOR):
         opcoes_menu.append("Cadastrar Fornecedor Direto")
         opcoes_menu.append("Aprovar Sugestões")
         opcoes_menu.append("Administrar Prioridades")
+        opcoes_menu.append("Estatísticas e Relatórios") # NOVO MENU INSERIDO
 
     menu_interno = st.radio("Menu de Acesso Rápido:", opcoes_menu, horizontal=True)
     st.write("---")
@@ -422,8 +429,11 @@ else:
                 else:
                     st.markdown(f"**{len(filtro)} resultado(s) encontrado(s):**")
                     
+                    # REGISTRA O LOG DA BUSCA
+                    nomes_encontrados = ", ".join(filtro['NOME'].astype(str).tolist())
+                    registrar_log(st.session_state['cpf_atual'], "Busca", busca_nome.strip(), busca_ramo.strip(), nomes_encontrados)
+                    
                     for _, row in filtro.iterrows():
-                        # O sistema puxa rigorosamente todas as colunas de Ramo 1 a 5 preenchidas
                         ramos_lista = [str(row[f"RAMO {i}"]).strip() for i in range(1, 6) if str(row.get(f"RAMO {i}", "")).strip() != ""]
                         
                         contatos_lista = []
@@ -435,15 +445,96 @@ else:
                         email_texto = f"\n✉️ E-mail: {row['EMAIL']}" if 'EMAIL' in row and str(row['EMAIL']).strip() != "" else ""
                         
                         with st.container(border=True):
-                            # Instrução visual clara e sem cortes
                             st.markdown("👇 **COPIAR INFORMAÇÕES:** Passe o mouse dentro da caixa abaixo e clique no ícone de copiar 📋 que aparecerá no canto superior direito.")
-                            
-                            # Título alterado para "RAMOS DE ATUAÇÃO" para abranger todos
                             texto_copia = f"🏢 EMPRESA: {row.get('NOME', 'Sem Nome')}\n🛠️ RAMOS DE ATUAÇÃO: {', '.join(ramos_lista)}\n📞 CONTATOS: {' / '.join(contatos_lista)}{email_texto}"
-                            
                             st.code(texto_copia, language="text")
             else:
                 st.warning("A base de dados está vazia.")
+
+    # ==============================================================
+    # NOVO MENU: ESTATÍSTICAS E RELATÓRIOS (EXCLUSIVO ADMINISTRADOR)
+    # ==============================================================
+    elif menu_interno == "Estatísticas e Relatórios":
+        st.subheader("📊 Relatórios e Estatísticas de Uso")
+        st.write("Analise o comportamento dos usuários e as demandas mais populares.")
+        
+        # Filtros de Data
+        col_d1, col_d2 = st.columns(2)
+        data_inicial = col_d1.date_input("Data Inicial", value=pd.to_datetime("today") - pd.Timedelta(days=30))
+        data_final = col_d2.date_input("Data Final", value=pd.to_datetime("today"))
+        
+        if st.button("Gerar Relatório", type="primary"):
+            df_logs = pd.DataFrame(aba_logs.get_all_records())
+            
+            if df_logs.empty:
+                st.warning("Nenhum dado de acesso ou busca registrado ainda.")
+            else:
+                # Converte as datas do log para poder filtrar
+                df_logs['Data'] = pd.to_datetime(df_logs['Data'], errors='coerce').dt.date
+                
+                # Filtra pelo período escolhido
+                mask = (df_logs['Data'] >= data_inicial) & (df_logs['Data'] <= data_final)
+                df_filtrado = df_logs.loc[mask]
+                
+                if df_filtrado.empty:
+                    st.info("Nenhuma atividade registrada no período selecionado.")
+                else:
+                    st.write("---")
+                    st.markdown("### 👥 Engajamento de Usuários")
+                    
+                    # Separa quem logou e quem buscou
+                    acessos = df_filtrado[df_filtrado['Acao'] == 'Acesso']
+                    buscas = df_filtrado[df_filtrado['Acao'] == 'Busca']
+                    
+                    cpfs_acessaram = set(acessos['CPF'].astype(str))
+                    cpfs_buscaram = set(buscas['CPF'].astype(str))
+                    
+                    qtd_buscas_efetivas = len(cpfs_buscaram)
+                    qtd_apenas_acesso = len(cpfs_acessaram - cpfs_buscaram)
+                    
+                    col_m1, col_m2 = st.columns(2)
+                    col_m1.metric("Usuários que Fizeram Buscas", qtd_buscas_efetivas)
+                    col_m2.metric("Acessaram, mas NÃO buscaram", qtd_apenas_acesso)
+                    
+                    st.write("---")
+                    st.markdown("### 📈 Termos e Demandas")
+                    
+                    col_g1, col_g2 = st.columns(2)
+                    
+                    with col_g1:
+                        st.markdown("**Top 10: Ramos Mais Procurados**")
+                        ramos_buscados = buscas[buscas['Termo_Ramo'] != '']['Termo_Ramo']
+                        if not ramos_buscados.empty:
+                            contagem_ramos = ramos_buscados.value_counts().head(10)
+                            st.bar_chart(contagem_ramos)
+                        else:
+                            st.write("Sem buscas por Ramo no período.")
+                            
+                    with col_g2:
+                        st.markdown("**Top 10: Prestadores Mais Procurados (Por Nome)**")
+                        nomes_buscados = buscas[buscas['Termo_Nome'] != '']['Termo_Nome']
+                        if not nomes_buscados.empty:
+                            contagem_nomes = nomes_buscados.value_counts().head(10)
+                            st.bar_chart(contagem_nomes)
+                        else:
+                            st.write("Sem buscas por Nome no período.")
+                            
+                    st.write("---")
+                    st.markdown("### 🏆 Prestadores Mais Exibidos nos Resultados")
+                    st.write("Quais empresas mais apareceram na tela dos síndicos nas buscas realizadas.")
+                    
+                    todas_empresas = []
+                    for fornecedores_str in buscas['Fornecedores_Encontrados']:
+                        if str(fornecedores_str).strip() != "":
+                            # Divide as empresas que vieram separadas por vírgula no Log
+                            empresas = [e.strip() for e in str(fornecedores_str).split(',') if e.strip() != ""]
+                            todas_empresas.extend(empresas)
+                            
+                    if todas_empresas:
+                        contagem_empresas = pd.Series(todas_empresas).value_counts().head(10)
+                        st.bar_chart(contagem_empresas)
+                    else:
+                        st.info("Nenhuma empresa foi exibida nos resultados de busca neste período.")
 
     elif menu_interno == "Sugerir Contato de Prestador/Fornecedor":
         st.subheader("Indique um Profissional")
