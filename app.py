@@ -12,7 +12,7 @@ import requests
 # CONFIGURAÇÃO DO ADMINISTRADOR (ATENÇÃO AQUI)
 # ==========================================
 # Digite o seu CPF (com o zero inicial, apenas os números) entre as aspas abaixo:
-CPF_DO_ADMINISTRADOR = "06698038474" 
+CPF_DO_ADMINISTRADOR = "01234567890" 
 
 st.set_page_config(page_title="Comunidade Síndicos da Paraíba", layout="wide")
 
@@ -132,10 +132,10 @@ if not st.session_state['logado']:
         """, unsafe_allow_html=True
     )
     
-    # Novo Título
+    # Título Principal
     st.markdown("<h1 style='text-align: center; margin-bottom: 20px; font-size: 34px;'>PORTAL DA COMUNIDADE SÍNDICOS DA PARAÍBA</h1>", unsafe_allow_html=True)
     
-    # Novo texto explicativo com design profissional
+    # Quadro de Apresentação e Regras
     st.markdown(
         """
         <div style="background-color: #FFFFFF; padding: 25px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 30px; border-left: 5px solid #1E3A8A; color: #334155; font-size: 15px; line-height: 1.6;">
@@ -359,7 +359,7 @@ if not st.session_state['logado']:
 # 4. PLATAFORMA PRINCIPAL (Após Login)
 # ==========================================
 else:
-    # Cabeçalho da Área Logada
+    # Cabeçalho da Área Logada (Banner compacto)
     st.markdown(
         """
         <div style="display: flex; justify-content: center; margin-bottom: 20px;">
@@ -379,6 +379,7 @@ else:
 
     opcoes_menu = ["Buscar", "Sugerir Contato de Prestador/Fornecedor"]
     
+    # Validação exclusiva para exibir menus administrativos
     if st.session_state.get('cpf_atual') == limpar_cpf(CPF_DO_ADMINISTRADOR):
         opcoes_menu.append("Cadastrar Fornecedor Direto")
         opcoes_menu.append("Aprovar Sugestões")
@@ -422,6 +423,7 @@ else:
                     st.markdown(f"**{len(filtro)} resultado(s) encontrado(s):**")
                     
                     for _, row in filtro.iterrows():
+                        # O sistema puxa rigorosamente todas as colunas de Ramo 1 a 5 preenchidas
                         ramos_lista = [str(row[f"RAMO {i}"]).strip() for i in range(1, 6) if str(row.get(f"RAMO {i}", "")).strip() != ""]
                         
                         contatos_lista = []
@@ -432,10 +434,14 @@ else:
                             
                         email_texto = f"\n✉️ E-mail: {row['EMAIL']}" if 'EMAIL' in row and str(row['EMAIL']).strip() != "" else ""
                         
-                        st.markdown("<p style='font-size: 14px; color: #64748B; margin-bottom: -10px; margin-top: 15px;'>📄 <b>Cartão do Fornecedor</b> (Passe o mouse na caixa abaixo e clique no ícone do canto direito para copiar):</p>", unsafe_allow_html=True)
-                        
-                        texto_copia = f"🏢 EMPRESA: {row.get('NOME', 'Sem Nome')}\n🛠️ RAMO(S): {', '.join(ramos_lista)}\n📞 CONTATO(S): {' / '.join(contatos_lista)}{email_texto}"
-                        st.code(texto_copia, language="text")
+                        with st.container(border=True):
+                            # Instrução visual clara e sem cortes
+                            st.markdown("👇 **COPIAR INFORMAÇÕES:** Passe o mouse dentro da caixa abaixo e clique no ícone de copiar 📋 que aparecerá no canto superior direito.")
+                            
+                            # Título alterado para "RAMOS DE ATUAÇÃO" para abranger todos
+                            texto_copia = f"🏢 EMPRESA: {row.get('NOME', 'Sem Nome')}\n🛠️ RAMOS DE ATUAÇÃO: {', '.join(ramos_lista)}\n📞 CONTATOS: {' / '.join(contatos_lista)}{email_texto}"
+                            
+                            st.code(texto_copia, language="text")
             else:
                 st.warning("A base de dados está vazia.")
 
